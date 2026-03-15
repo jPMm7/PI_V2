@@ -9,29 +9,31 @@ export default function ToolDemo() {
       setResult('Por favor, insere uma sequência válida.');
       return;
     }
-    // Aqui no futuro o React vai comunicar com o servidor Node.js dos teus colegas
-    setResult('Análise concluída: identificadas 2 diferenças de aminoácidos e 1 mutação compensatória putativa entre a referência humana e o proteoma do gato (Felis catus).');
+    setResult('Análise simulada concluída: identificadas 2 diferenças de aminoácidos e 1 mutação compensatória putativa entre a referência humana e o proteoma da espécie analisada.');
   };
 
   return (
-    <section id="tool" className="card">
-      <h2>Demonstração da Ferramenta</h2>
-      <p>Introduz uma sequência de proteína para simular análise:</p>
+    <section id="tool" className="bg-white p-8 mb-8 rounded-[10px] shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
+      <h2 className="text-[#1c2a39] text-2xl font-bold mb-4 mt-0">Demonstração da Ferramenta</h2>
+      <p className="mb-4 text-gray-700">Introduz uma sequência de proteína para simular análise:</p>
       
       <textarea 
         rows="5" 
-        placeholder="Insere sequência de aminoácidos..."
+        placeholder="Insere sequência de aminoácidos (ex: referência humana vs Felis catus)..."
         value={sequence}
         onChange={(e) => setSequence(e.target.value)}
-        style={{ width: '100%', marginBottom: '15px' }}
+        className="w-full p-3 mt-1 mb-4 rounded-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#2c5364] bg-white"
       />
       
-      <button onClick={handleAnalysis} style={{ background: '#2c5364', color: 'white', padding: '10px 18px' }}>
+      <button 
+        onClick={handleAnalysis} 
+        className="bg-[#2c5364] text-white px-5 py-2.5 rounded-md hover:bg-[#1c2a39] transition-colors font-medium cursor-pointer"
+      >
         Analisar
       </button>
 
       {result && (
-        <div style={{ marginTop: '20px', padding: '15px', background: '#eef3f8', borderRadius: '8px' }}>
+        <div className="mt-6 p-4 bg-[#eef3f8] rounded-lg text-gray-800 font-medium">
           <p>{result}</p>
         </div>
       )}

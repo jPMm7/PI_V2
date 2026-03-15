@@ -1,14 +1,19 @@
-import './App.css';
+import Header from './components/Header';
+import Navbar from './components/Navbar';
+import About from './components/About';
 import ToolDemo from './components/ToolDemo';
 
 function App() {
   return (
-    <div style={{ padding: '20px', fontFamily: 'sans-serif' }}>
-      <h1>Plataforma de Interações Compensatórias 🧬</h1>
-      <p>O React está vivo e a funcionar!</p>
-      <hr />
-      {/* Aqui estamos a chamar o componente que já criaste */}
-      <ToolDemo /> 
+    <div className="min-h-screen">
+      <Header />
+      <Navbar />
+      
+      {/* Este main atua como a classe .container original */}
+      <main className="max-w-[1100px] mx-auto px-5 py-10">
+        <About />
+        <ToolDemo />
+      </main>
     </div>
   );
 }
