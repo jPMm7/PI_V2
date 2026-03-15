@@ -4,9 +4,49 @@
   --color-background-app: #f5f7fb;
 }
 
+
+html {
+  scroll-behavior: smooth; /* Faz a página deslizar em vez de saltar */
+  scroll-padding-top: 80px; /* Compensa a altura da Navbar para não tapar os títulos */
+}
+
 body {
   background-color: var(--color-background-app);
   color: #333;
   font-family: ui-sans-serif, system-ui, sans-serif;
   margin: 0;
+}
+
+/* Customização da Scrollbar (Firefox) */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: #2c5364 #eef3f8;
+}
+
+/* Customização da Scrollbar (Chrome, Edge, Safari) */
+html::-webkit-scrollbar {
+  width: 10px;
+}
+
+html::-webkit-scrollbar-track {
+  background: #eef3f8; 
+}
+
+html::-webkit-scrollbar-thumb {
+  background-color: #2c5364; 
+  border-radius: 10px;
+  border: 2px solid #eef3f8; /* Cria um efeitinho de margem interna */
+}
+
+html::-webkit-scrollbar-thumb:hover {
+  background-color: #1c2a39; /* Fica mais escura quando passas o rato */
+}
+
+/* Esconder a Scrollbar mas manter o scroll a funcionar */
+html {
+  scrollbar-width: none; /* Firefox */
+}
+
+html::-webkit-scrollbar {
+  display: none; /* Chrome, Edge, Safari */
 }
