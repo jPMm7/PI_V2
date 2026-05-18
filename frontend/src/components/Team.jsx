@@ -3,7 +3,7 @@ export default function Team() {
   const teamMembers = [
     { name: "Gonçalo Santos", role: "Bioinformática" },
     { name: "João Ferreira", role: "Programação" },
-    { name: "Manuel Pedro", role: "Análise de Dados" },
+    { name: "José Ferreira", role: "Análise de Dados" },
     { name: "João Marques", role: "Mais Responsável" }
   ];
 
