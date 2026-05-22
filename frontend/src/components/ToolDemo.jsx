@@ -277,7 +277,7 @@ export default function ToolDemo({ onAnalysisComplete }) {
               </div>
             </div>
 
-            <div className="flex my-2 items-center bg-[#15202b] py-1 rounded-sm border-y border-gray-700/50">
+            <div className="flex my-2 items-center py-1  ">
               <div className="w-48 shrink-0 pr-2 text-right">
                 <span className="text-gray-400 text-[9px] font-semibold uppercase tracking-wider block">Posição</span>
               </div>
