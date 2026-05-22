@@ -1,5 +1,4 @@
 export default function Navbar() {
-  // Agora mapeamos o texto que aparece no botão para o ID exato da secção
   const navItems = [
     { label: 'Projeto', id: 'about' },
     { label: 'Objetivos', id: 'objectives' },

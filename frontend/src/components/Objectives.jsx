@@ -23,7 +23,7 @@ export default function Objectives() {
     <section id="objectives" className="bg-white p-[30px] mb-[30px] rounded-[10px] shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
       <h2 className="text-[#1c2a39] text-[28px] font-bold mt-0 mb-6">Objetivos</h2>
       
-      {/* Aqui recriamos a classe .grid do vosso colega de forma automática */}
+      
       <div className="grid grid-cols-[repeat(auto-fit,minmax(250px,1fr))] gap-5">
         
         {/* O React vai percorrer a lista acima e gerar um cartão para cada objetivo */}

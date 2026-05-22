@@ -31,7 +31,6 @@ export default function ProteinViewer({ analysisState }) {
     };
   }, []);
 
-  // O PIPELINE AGORA É 100% UNIVERSAL PARA TODAS AS ESPÉCIES (INCLUINDO HUMANO)
   const loadStructure = async (targetGene, targetSpeciesId, viewer, setLabel, setLoading) => {
     if (!viewer) return;
     setLoading(true);

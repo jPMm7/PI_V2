@@ -123,7 +123,6 @@ export default function ToolDemo({ onAnalysisComplete }) {
       setDebugLogs({ referencia: refData.debug, comparacao: compData.debug });
       setShowResults(true);
 
-      // A MAGIA ACONTECE AQUI: Atualiza o estado global no pai!
       if (onAnalysisComplete) {
         onAnalysisComplete({
           gene: targetGene,
