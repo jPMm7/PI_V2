@@ -70,7 +70,12 @@ export default function ToolDemo({ onAnalysisComplete }) {
       onAnalysisComplete({
         gene: searchTerm.toUpperCase(),
         refSpecies: refSpecies,
-        compSpeciesList: updatedSpeciesList
+        compSpeciesList: updatedSpeciesList,
+        refSequence: refDataState?.sequence,
+        compSequences: updatedDataList.reduce((acc, item) => {
+          if (item && !item.error) acc[item.species] = item.sequence;
+          return acc;
+        }, {})
       });
     }
   };
@@ -194,7 +199,12 @@ export default function ToolDemo({ onAnalysisComplete }) {
         onAnalysisComplete({
           gene: targetGene,
           refSpecies: refSpecies,
-          compSpeciesList: compSpeciesList
+          compSpeciesList: compSpeciesList,
+          refSequence: refData.sequence,
+          compSequences: compDataArray.reduce((acc, item) => {
+            if (item && !item.error) acc[item.species] = item.sequence;
+            return acc;
+          }, {})
         });
       }
     } catch (error) {
@@ -216,7 +226,12 @@ export default function ToolDemo({ onAnalysisComplete }) {
       onAnalysisComplete({
         gene: searchTerm.toUpperCase(),
         refSpecies: refSpecies,
-        compSpeciesList: updatedList
+        compSpeciesList: updatedList,
+        refSequence: refDataState?.sequence,
+        compSequences: compDataListState.filter(item => item.species !== speciesId).reduce((acc, item) => {
+          if (item && !item.error) acc[item.species] = item.sequence;
+          return acc;
+        }, {})
       });
     }
   };
@@ -229,47 +244,73 @@ export default function ToolDemo({ onAnalysisComplete }) {
     
     const targetGene = searchTerm.toUpperCase();
 
-    // 1. Atualiza a lista geral
+    // Atualiza a lista geral
     const updatedList = [...compSpeciesList, newSpeciesId];
     setCompSpeciesList(updatedList);
 
-    // 2. Cria uma linha visual temporária em estado de carregamento
-    setCompDataListState(prev => [
-      ...prev, 
-      { species: newSpeciesId, sequence: '', loading: true }
-    ]);
+    // Linha de carregamento temporária
+    setCompDataListState(prev => [...prev, { species: newSpeciesId, sequence: '', loading: true }]);
 
-    // 3. Dispara a chamada à API apenas para esta nova linha
+    // Dispara API
     const newData = await fetchEnsemblData(newSpeciesId, targetGene);
 
+    // ATUALIZAÇÃO SEGURA: Sem side-effects dentro do setState!
     setCompDataListState(prev => {
       const next = [...prev];
       const idx = next.findIndex(item => item.species === newSpeciesId);
-      if (idx !== -1) {
-        next[idx] = newData;
-      }
+      if (idx !== -1) next[idx] = newData;
       return next;
     });
 
-    // 4. Sincroniza com o componente pai (e o Visualizador 3D)
+    // Sincroniza com o PAI no escopo correto (Acaba com o erro da consola!)
     if (onAnalysisComplete) {
+      const currentDataList = compDataListState.filter(item => item.species !== newSpeciesId);
+      currentDataList.push(newData);
+
       onAnalysisComplete({
         gene: targetGene,
         refSpecies: refSpecies,
-        compSpeciesList: updatedList
+        compSpeciesList: updatedList,
+        refSequence: refDataState?.sequence,
+        compSequences: currentDataList.reduce((acc, item) => {
+          if (item && !item.error) acc[item.species] = item.sequence;
+          return acc;
+        }, {})
       });
     }
   };
 
+  // 2. ESTATÍSTICAS COM JANELA DESLIZANTE INFINITA
   const calculateStats = (refSeq, compSeq) => {
-    if (!compSeq) return { mutations: 0, identity: 0 };
-    let mutations = 0;
-    const minLength = Math.min(refSeq.length, compSeq.length);
-    for (let i = 0; i < minLength; i++) {
-      if (refSeq[i] !== compSeq[i]) mutations++;
+    if (!compSeq || !refSeq) return { mutations: 0, identity: 0, offset: 0 };
+    let maxMatches = 0;
+    let bestOffset = 0; // <--- ADICIONAR ESTA VARIÁVEL
+    const range = Math.max(refSeq.length, compSeq.length);
+
+    // Procura o encaixe perfeito de ponta a ponta
+    for (let offset = -range; offset <= range; offset++) {
+      let matches = 0;
+      for (let i = 0; i < refSeq.length; i++) {
+        const compIdx = i + offset;
+        if (compIdx >= 0 && compIdx < compSeq.length) {
+          if (refSeq[i] === compSeq[compIdx]) matches++;
+        }
+      }
+      if (matches > maxMatches) {
+        maxMatches = matches;
+        bestOffset = offset; // <--- GUARDAR O OFFSET PERFEITO AQUI
+      }
     }
-    const identity = (((minLength - mutations) / minLength) * 100).toFixed(2);
-    return { mutations, identity };
+
+    const minLength = Math.min(refSeq.length, compSeq.length);
+    const mutations = minLength - maxMatches;
+    const identity = ((maxMatches / minLength) * 100).toFixed(1);
+    
+    return { 
+      mutations: mutations > 0 ? mutations : 0, 
+      identity: identity > 100 ? 100 : identity,
+      offset: bestOffset // <--- EXPORTAR PARA A UI
+    };
   };
 
   return (
@@ -469,21 +510,39 @@ export default function ToolDemo({ onAnalysisComplete }) {
                       </div>
                     </div>
 
-                    {/* COLUNA DIREITA FLUIDA (Aminoácidos com micro-carregamento) */}
+                    {/* COLUNA DIREITA FLUIDA (Aminoácidos alinhados de forma inteligente) */}
                     {compData.loading ? (
                       <span className="text-xs text-blue-300 animate-pulse pl-2 italic">A atualizar via Ensembl API...</span>
                     ) : compData.error ? (
                       <span className="text-red-400 text-xs pl-2 truncate max-w-xl" title={compData.error}>⚠️ {compData.error}</span>
                     ) : (
                       <div className="flex gap-[1px]">
-                        {compData.sequence.split('').map((char, index) => {
-                          const isDiff = char !== refDataState.sequence[index];
+                        {refDataState.sequence.split('').map((refChar, index) => {
+                          // Calcula em que posição da sequência do animal estamos com base no offset
+                          const compIdx = index + stats.offset;
+                          const compChar = compData.sequence[compIdx];
+
+                          // Se estivermos numa zona onde o animal não tem proteína (fragmento truncado/gap)
+                          if (compIdx < 0 || compIdx >= compData.sequence.length) {
+                            return (
+                              <span 
+                                key={`c-${trackIdx}-${index}`} 
+                                className="w-[14px] text-center inline-block rounded-sm text-gray-500 opacity-30 font-bold"
+                                title="Gap de Sequência"
+                              >
+                                -
+                              </span>
+                            );
+                          }
+
+                          // Comparação real após compensar o desalinhamento
+                          const isDiff = compChar !== refChar;
                           return (
                             <span 
                               key={`c-${trackIdx}-${index}`} 
                               className={`w-[14px] text-center inline-block rounded-sm ${isDiff ? 'bg-red-500 text-white font-bold' : 'text-gray-400 opacity-60'}`}
                             >
-                              {char}
+                              {compChar}
                             </span>
                           );
                         })}

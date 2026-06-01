@@ -5,9 +5,10 @@ const HUMAN_FALLBACK = {
   "SNCA": "1X6B", "HTT": "6EZV", "CFTR": "5UAK", "TNF": "1TNF", "IL6": "1ALU", "VEGFA": "1VPF"
 };
 
+
+
 export default function ProteinViewer({ analysisState }) {
-  // Agora recebemos a compSpeciesList (o Array)
-  const { gene, refSpecies, compSpeciesList } = analysisState;
+  const { gene, refSpecies, compSpeciesList, refSequence, compSequences } = analysisState;
 
   // Estado que controla qual dos animais da lista está ativamente visível no 3D da direita
   const [activeCompSpecies, setActiveCompSpecies] = useState(compSpeciesList ? compSpeciesList[0] : 'felis_catus');
@@ -26,6 +27,8 @@ export default function ProteinViewer({ analysisState }) {
   const [proteinColor, setProteinColor] = useState('spectrum');
   const [isSpinning, setIsSpinning] = useState(false);
 
+
+  // 1. INICIALIZAÇÃO DO MOTOR WEBGL (Este bloco tinha desaparecido!)
   useEffect(() => {
     if (!window.$3Dmol) return;
     if (viewerLeftRef.current && !instLeft.current) {
@@ -39,6 +42,77 @@ export default function ProteinViewer({ analysisState }) {
       if (instRight.current) instRight.current.removeAllModels();
     };
   }, []);
+
+  const applyStyles = (viewer) => {
+    if (!viewer) return;
+
+    if (proteinColor === 'mutations' && refSequence && compSequences?.[activeCompSpecies]) {
+      const activeSequence = compSequences[activeCompSpecies];
+      const mutatedResidues = [];
+      
+      // 1. ALGORITMO DE JANELA DESLIZANTE ILIMITADO (Para fragmentos massivos)
+      let bestOffset = 0;
+      let maxMatches = 0;
+      const range = Math.max(refSequence.length, activeSequence.length);
+      
+      for (let offset = -range; offset <= range; offset++) {
+        let matches = 0;
+        for (let i = 0; i < refSequence.length; i++) {
+          const compChar = activeSequence[i + offset];
+          if (compChar && refSequence[i] === compChar) {
+            matches++;
+          }
+        }
+        if (matches > maxMatches) {
+          maxMatches = matches;
+          bestOffset = offset;
+        }
+      }
+
+      // 2. SEGURANÇA BIOINFORMÁTICA
+      const identity = maxMatches / Math.min(refSequence.length, activeSequence.length);
+      
+      // Pintar o esqueleto base de branco puro
+      const baseStyle = {};
+      baseStyle[proteinStyle] = { color: '#ffffff' };
+      viewer.setStyle({ resn: "HOH", invert: true }, baseStyle);
+
+      // Se a identidade for decente (> 20%), mapeamos as mutações
+      if (identity > 0.20) {
+        for (let i = 0; i < refSequence.length; i++) {
+          const compChar = activeSequence[i + bestOffset];
+          // Se as letras forem diferentes na posição de encaixe perfeito, é mutação real
+          if (compChar && refSequence[i] !== compChar) {
+            mutatedResidues.push(i + 1); // +1 porque PDB começa no 1
+          }
+        }
+
+        // Aplicar tinta vermelha nas posições precisas
+        if (mutatedResidues.length > 0) {
+          const mutationStyle = {};
+          mutationStyle[proteinStyle] = { color: '#ef4444' };
+          viewer.setStyle({ resi: mutatedResidues, resn: "HOH", invert: true }, mutationStyle);
+        }
+      } else {
+        console.warn(`Fragmento incompatível detetado para ${activeCompSpecies}. Evitando marcação mutacional excessiva.`);
+      }
+
+    } else {
+      // Esquemas de cores Standard
+      const styleConfig = {};
+      styleConfig[proteinStyle] = { color: proteinColor === 'mutations' ? 'spectrum' : proteinColor };
+      viewer.setStyle({ resn: "HOH", invert: true }, styleConfig);
+    }
+
+    viewer.spin(isSpinning);
+    viewer.render();
+  };
+
+  // Este useEffect garante que sempre que mudares de animal, de estilo ou as sequências atualizarem, os visualizadores são repintados
+  useEffect(() => {
+    applyStyles(instLeft.current);
+    applyStyles(instRight.current);
+  }, [proteinStyle, proteinColor, isSpinning, refSequence, compSequences, activeCompSpecies, loadingLeft, loadingRight]);
 
   // Força o ecrã direito a fazer reset e selecionar o 1º animal da lista sempre que a pesquisa principal no ToolDemo mudar
   useEffect(() => {
@@ -85,13 +159,8 @@ export default function ProteinViewer({ analysisState }) {
       viewer.clear();
       viewer.addModel(pdbText, "pdb", { keepH: false });
       
-      const styleConfig = {};
-      styleConfig[proteinStyle] = { color: proteinColor };
-      viewer.setStyle({ resn: "HOH", invert: true }, styleConfig);
-      
-      viewer.spin(isSpinning);
+      applyStyles(viewer); // <-- Substitui o bloco antigo por isto
       viewer.zoomTo();
-      viewer.render();
       setLabel(sourceName);
 
     } catch (err) {
@@ -109,18 +178,6 @@ export default function ProteinViewer({ analysisState }) {
     if (gene && activeCompSpecies) loadStructure(gene, activeCompSpecies, instRight.current, setLabelRight, setLoadingRight);
   }, [gene, activeCompSpecies]);
 
-  useEffect(() => {
-    const applyStyles = (viewer) => {
-      if (!viewer) return;
-      const styleConfig = {};
-      styleConfig[proteinStyle] = { color: proteinColor };
-      viewer.setStyle({ resn: "HOH", invert: true }, styleConfig);
-      viewer.spin(isSpinning);
-      viewer.render();
-    };
-    applyStyles(instLeft.current);
-    applyStyles(instRight.current);
-  }, [proteinStyle, proteinColor, isSpinning]);
 
   const handleManualUpload = (e, viewer, setLabel) => {
     const file = e.target.files[0];
@@ -159,10 +216,11 @@ export default function ProteinViewer({ analysisState }) {
         <div>
           <label className="block font-semibold text-[#1c2a39] mb-2 text-sm">Esquema de Cor</label>
           <select value={proteinColor} onChange={(e) => setProteinColor(e.target.value)} className="w-full bg-white border border-gray-300 py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-[#2c5364]">
-            <option value="spectrum">Arco-íris (Spectrum)</option>
-            <option value="#00ff00">Verde Néon</option>
-            <option value="#ffffff">Branco Puro</option>
-          </select>
+          <option value="spectrum">Arco-íris (Spectrum)</option>
+          <option value="mutations">Diferenças Mutacionais (Vermelho)</option> {/* <-- NOVA OPÇÃO */}
+          <option value="#00ff00">Verde Néon</option>
+          <option value="#ffffff">Branco Puro</option>
+        </select>
         </div>
         <div className="w-full md:w-auto">
           <button onClick={() => setIsSpinning(!isSpinning)} className={`w-full py-2 px-6 rounded-md font-semibold transition-colors ${isSpinning ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-[#2c5364] hover:bg-[#1c2a39] text-white'}`}>
