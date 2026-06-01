@@ -43,14 +43,13 @@ export default function ProteinViewer({ analysisState }) {
     };
   }, []);
 
-  const applyStyles = (viewer) => {
+  const applyStyles = (viewer, isLeft) => {
     if (!viewer) return;
 
     if (proteinColor === 'mutations' && refSequence && compSequences?.[activeCompSpecies]) {
       const activeSequence = compSequences[activeCompSpecies];
-      const mutatedResidues = [];
       
-      // 1. ALGORITMO DE JANELA DESLIZANTE ILIMITADO (Para fragmentos massivos)
+      // 1. ALGORITMO DE JANELA DESLIZANTE ILIMITADO
       let bestOffset = 0;
       let maxMatches = 0;
       const range = Math.max(refSequence.length, activeSequence.length);
@@ -79,19 +78,27 @@ export default function ProteinViewer({ analysisState }) {
 
       // Se a identidade for decente (> 20%), mapeamos as mutações
       if (identity > 0.20) {
+        const targetMutations = [];
+
         for (let i = 0; i < refSequence.length; i++) {
-          const compChar = activeSequence[i + bestOffset];
-          // Se as letras forem diferentes na posição de encaixe perfeito, é mutação real
+          const compIdx = i + bestOffset;
+          const compChar = activeSequence[compIdx];
+          
+          // Se as letras forem diferentes na posição de encaixe (mutação real)
           if (compChar && refSequence[i] !== compChar) {
-            mutatedResidues.push(i + 1); // +1 porque PDB começa no 1
+            if (isLeft) {
+              targetMutations.push(i + 1); // Coordenadas PDB do Humano
+            } else {
+              targetMutations.push(compIdx + 1); // Coordenadas PDB do Animal (Fragmento)
+            }
           }
         }
 
-        // Aplicar tinta vermelha nas posições precisas
-        if (mutatedResidues.length > 0) {
+        // CORREÇÃO CRÍTICA: Aplica vermelho APENAS aos resíduos alvo (sem o invert: true)
+        if (targetMutations.length > 0) {
           const mutationStyle = {};
           mutationStyle[proteinStyle] = { color: '#ef4444' };
-          viewer.setStyle({ resi: mutatedResidues, resn: "HOH", invert: true }, mutationStyle);
+          viewer.setStyle({ resi: targetMutations }, mutationStyle);
         }
       } else {
         console.warn(`Fragmento incompatível detetado para ${activeCompSpecies}. Evitando marcação mutacional excessiva.`);
@@ -110,8 +117,9 @@ export default function ProteinViewer({ analysisState }) {
 
   // Este useEffect garante que sempre que mudares de animal, de estilo ou as sequências atualizarem, os visualizadores são repintados
   useEffect(() => {
-    applyStyles(instLeft.current);
-    applyStyles(instRight.current);
+    applyStyles(instLeft.current, true);  // true = Ecrã Esquerdo (Humano)
+    applyStyles(instRight.current, false); // false = Ecrã Direito (Animal)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [proteinStyle, proteinColor, isSpinning, refSequence, compSequences, activeCompSpecies, loadingLeft, loadingRight]);
 
   // Força o ecrã direito a fazer reset e selecionar o 1º animal da lista sempre que a pesquisa principal no ToolDemo mudar
@@ -124,7 +132,7 @@ export default function ProteinViewer({ analysisState }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [compSpeciesList]);
 
-  const loadStructure = async (targetGene, targetSpeciesId, viewer, setLabel, setLoading) => {
+  const loadStructure = async (targetGene, targetSpeciesId, viewer, setLabel, setLoading, isLeft) => {
     if (!viewer) return;
     setLoading(true);
 
@@ -159,7 +167,7 @@ export default function ProteinViewer({ analysisState }) {
       viewer.clear();
       viewer.addModel(pdbText, "pdb", { keepH: false });
       
-      applyStyles(viewer); // <-- Substitui o bloco antigo por isto
+      applyStyles(viewer, isLeft); // <-- Agora sabe se é Humano ou Animal!
       viewer.zoomTo();
       setLabel(sourceName);
 
@@ -171,11 +179,13 @@ export default function ProteinViewer({ analysisState }) {
   };
 
   useEffect(() => {
-    if (gene && refSpecies) loadStructure(gene, refSpecies, instLeft.current, setLabelLeft, setLoadingLeft);
+    if (gene && refSpecies) loadStructure(gene, refSpecies, instLeft.current, setLabelLeft, setLoadingLeft, true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gene, refSpecies]);
 
   useEffect(() => {
-    if (gene && activeCompSpecies) loadStructure(gene, activeCompSpecies, instRight.current, setLabelRight, setLoadingRight);
+    if (gene && activeCompSpecies) loadStructure(gene, activeCompSpecies, instRight.current, setLabelRight, setLoadingRight, false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gene, activeCompSpecies]);
 
 
