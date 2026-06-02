@@ -42,8 +42,11 @@ export default function ToolDemo({ onAnalysisComplete }) {
   const [compDataListState, setCompDataListState] = useState([]);
   const [showResults, setShowResults] = useState(false);
 
-  // NOVO: Estado para saber qual a linha que está ativamente em modo de edição
+ // NOVO: Estado para saber qual a linha que está ativamente em modo de edição
   const [isAddingTrack, setIsAddingTrack] = useState(false);
+  
+  // NOVO: Estado para controlar a Janela Dinâmica (Modal) das Mutações
+  const [mutationModal, setMutationModal] = useState({ isOpen: false, species: '', mutations: [] });
 
   const handleMoveTrack = (index, direction) => {
     const newIndex = direction === 'up' ? index - 1 : index + 1;
@@ -280,14 +283,14 @@ export default function ToolDemo({ onAnalysisComplete }) {
     }
   };
 
-  // 2. ESTATÍSTICAS COM JANELA DESLIZANTE INFINITA
+  // 2. ESTATÍSTICAS COM JANELA DESLIZANTE INFINITA E NOTAÇÃO HGVS
   const calculateStats = (refSeq, compSeq) => {
-    if (!compSeq || !refSeq) return { mutations: 0, identity: 0, offset: 0 };
+    if (!compSeq || !refSeq) return { mutations: 0, identity: 0, offset: 0, mutationDetails: [] };
     let maxMatches = 0;
-    let bestOffset = 0; // <--- ADICIONAR ESTA VARIÁVEL
+    let bestOffset = 0;
     const range = Math.max(refSeq.length, compSeq.length);
 
-    // Procura o encaixe perfeito de ponta a ponta
+    // 1. Procura o encaixe perfeito de ponta a ponta
     for (let offset = -range; offset <= range; offset++) {
       let matches = 0;
       for (let i = 0; i < refSeq.length; i++) {
@@ -298,18 +301,40 @@ export default function ToolDemo({ onAnalysisComplete }) {
       }
       if (matches > maxMatches) {
         maxMatches = matches;
-        bestOffset = offset; // <--- GUARDAR O OFFSET PERFEITO AQUI
+        bestOffset = offset;
+      }
+    }
+
+    // 2. Extrair as mutações na notação V50G
+    const mutationDetails = [];
+    let mutationsCount = 0;
+    let matches = 0;
+
+    for (let i = 0; i < refSeq.length; i++) {
+      const compIdx = i + bestOffset;
+      // Analisa apenas as partes onde as duas proteínas se sobrepõem
+      if (compIdx >= 0 && compIdx < compSeq.length) {
+        const refChar = refSeq[i];
+        const compChar = compSeq[compIdx];
+        
+        if (refChar === compChar) {
+          matches++;
+        } else {
+          mutationsCount++;
+          // Cria a string HGVS: [Original][Posição][Mutado]
+          mutationDetails.push(`${refChar}${i + 1}${compChar}`); 
+        }
       }
     }
 
     const minLength = Math.min(refSeq.length, compSeq.length);
-    const mutations = minLength - maxMatches;
-    const identity = ((maxMatches / minLength) * 100).toFixed(1);
+    const identity = ((matches / minLength) * 100).toFixed(1);
     
     return { 
-      mutations: mutations > 0 ? mutations : 0, 
+      mutations: mutationsCount, 
       identity: identity > 100 ? 100 : identity,
-      offset: bestOffset // <--- EXPORTAR PARA A UI
+      offset: bestOffset,
+      mutationDetails: mutationDetails // <-- Exportar para a UI
     };
   };
 
@@ -471,9 +496,17 @@ export default function ToolDemo({ onAnalysisComplete }) {
                       {/* Sub-barra de Status + Botões */}
                       <div className="flex justify-between items-center text-[10px] mt-0.5">
                         {hasData ? (
-                          <div className="flex gap-2">
-                            <span className="text-red-300">Mut: {stats.mutations}</span>
-                            <span className="text-green-300">Id: {stats.identity}%</span>
+                          <div className="flex gap-3 items-center">
+                            {/* BOTÃO DE RELATÓRIO EVIDENTE */}
+                            <button 
+                              onClick={() => setMutationModal({ isOpen: true, species: compData.species, mutations: stats.mutationDetails })}
+                              className="bg-red-900/30 text-red-300 border border-red-800/50 hover:bg-red-600 hover:text-white hover:border-red-400 hover:shadow-[0_0_12px_rgba(239,68,68,0.4)] px-2 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1.5 -ml-1"
+                              title="Abrir Relatório Detalhado"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
+                              <span className="font-bold">{stats.mutations} Mut</span>
+                            </button>
+                            <span className="text-green-300 font-bold py-0.5">Id: {stats.identity}%</span>
                           </div>
                         ) : (
                           <span className="text-gray-500 italic">---</span>
@@ -614,6 +647,63 @@ export default function ToolDemo({ onAnalysisComplete }) {
           </div>
         </div>
       )}
+      {/* NOVO: JANELA DINÂMICA (MODAL) DO RELATÓRIO DE MUTAÇÕES */}
+      {mutationModal.isOpen && (
+        <div className="fixed inset-0 bg-[#000000bb] z-50 flex justify-center items-center backdrop-blur-md p-4 animate-fade-in">
+          {/* Mudança para rounded-2xl e overflow-hidden para arredondamento perfeito */}
+          <div className="bg-[#1c2a39] border border-gray-600 rounded-2xl shadow-[0_0_40px_rgba(0,0,0,0.5)] max-w-2xl w-full max-h-[80vh] flex flex-col overflow-hidden">
+            
+            {/* Cabeçalho do Modal (um pouco mais espaçoso) */}
+            <div className="p-5 border-b border-gray-700 flex justify-between items-center bg-[#15202b]">
+              <h3 className="text-white text-lg font-bold m-0 flex items-center gap-2">
+                🧬 Perfil Mutacional: <span className="text-green-400">{mutationModal.species.replace(/_/g, ' ').toUpperCase()}</span>
+              </h3>
+              <button 
+                onClick={() => setMutationModal({ isOpen: false, species: '', mutations: [] })} 
+                className="text-gray-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
+            </div>
+            
+            {/* Corpo com a grelha de mutações */}
+            <div className="p-6 overflow-y-auto">
+              <p className="text-gray-300 mb-6 text-sm">
+                Foram detetadas <strong>{mutationModal.mutations.length}</strong> divergências peptídicas em relação à referência humana <span className="italic">({refSpecies.replace(/_/g, ' ')})</span>. Abaixo encontra-se o mapeamento na notação HGVS (Original ➔ Posição ➔ Mutado).
+              </p>
+              
+              {mutationModal.mutations.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {mutationModal.mutations.map((mut, idx) => (
+                    <span 
+                      key={idx} 
+                      className="bg-red-900/30 text-red-300 border border-red-800/50 px-2.5 py-1.5 rounded text-sm font-mono shadow-sm hover:bg-red-900/50 transition-colors cursor-default"
+                    >
+                      {mut}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center text-gray-500 italic py-8 border border-dashed border-gray-700 rounded-lg">
+                  Não foram detetadas mutações. A sequência é 100% idêntica.
+                </div>
+              )}
+            </div>
+            
+            {/* Rodapé do Modal */}
+            <div className="p-4 border-t border-gray-700 flex justify-end">
+              <button 
+                onClick={() => setMutationModal({ isOpen: false, species: '', mutations: [] })} 
+                className="bg-gray-700 hover:bg-gray-600 text-white px-6 py-2 rounded transition-colors text-sm font-semibold cursor-pointer"
+              >
+                Fechar Relatório
+              </button>
+            </div>
+            
+          </div>
+        </div>
+      )}
+
     </section>
   );
 }
