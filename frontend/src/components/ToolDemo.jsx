@@ -585,13 +585,37 @@ export default function ToolDemo({ onAnalysisComplete }) {
 
                                 // Nova Lógica: Se o humano não tiver letra nesta posição, é sempre uma diferença (inserção)
                                 const isDiff = !refChar || compChar !== refChar;
+                                
+                                // Gerar a notação HGVS (ex: V50G)
+                                const mutationLabel = isDiff ? `${refChar || '-'}${index + 1}${compChar}` : "";
+
                                 return (
-                                  <span 
-                                    key={`c-${trackIdx}-${index}`} 
-                                    className={`w-[14px] text-center inline-block rounded-sm ${isDiff ? 'bg-red-500 text-white font-bold' : 'text-gray-400 opacity-60'}`}
-                                  >
-                                    {compChar}
-                                  </span>
+                                  <div key={`c-${trackIdx}-${index}`} className="relative group flex justify-center">
+                                    
+                                    {/* A Letra em si (repara que retirámos o title= nativo) */}
+                                    <span 
+                                      className={`w-[14px] text-center inline-block rounded-sm transition-colors ${
+                                        isDiff 
+                                          ? 'bg-red-500 text-white font-bold cursor-help hover:bg-red-400 hover:shadow-[0_0_8px_rgba(239,68,68,0.6)]' 
+                                          : 'text-gray-400 opacity-60'
+                                      }`}
+                                    >
+                                      {compChar}
+                                    </span>
+                                    
+                                    {/* NOVO: BALÃO FLUTUANTE CUSTOMIZADO (TOOLTIP) */}
+                                    {isDiff && (
+                                      <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50 flex flex-col items-center">
+                                        <div className="bg-[#15202b] border border-red-900/60 shadow-[0_4px_12px_rgba(0,0,0,0.5)] rounded-md px-2 py-1 flex items-center gap-1.5 whitespace-nowrap">
+                                          <span className="text-gray-400 text-[9px] uppercase tracking-wider font-semibold">Mut:</span>
+                                          <span className="text-red-400 text-xs font-mono font-bold tracking-widest">{mutationLabel}</span>
+                                        </div>
+                                        {/* Pequena seta geométrica do balão a apontar para a letra */}
+                                        <div className="w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-t-[5px] border-t-[#15202b] -mt-[1px]"></div>
+                                      </div>
+                                    )}
+                                    
+                                  </div>
                                 );
                               })}
                             </div>
