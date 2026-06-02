@@ -392,47 +392,63 @@ export default function ToolDemo({ onAnalysisComplete }) {
       {showResults && refDataState && (
         <div className="mt-8 animate-fade-in">
           
-          <div className="bg-[#1c2a39] p-5 rounded-t-lg border-b border-gray-600 flex justify-between items-center">
-            <h3 className="text-white text-lg font-bold m-0 flex items-center gap-2">
-              🧬 Alinhamento Multi-Espécie: <span className="text-[#6ec1ff]">{searchTerm.toUpperCase()}</span>
-            </h3>
-            <span className="bg-gray-700 text-gray-200 px-3 py-1 rounded-full text-sm border border-gray-600">
-              Tamanho Ref: <strong>{refDataState.sequence.length} aa</strong>
-            </span>
-          </div>
-
           <div className="bg-[#1c2a39] text-gray-300 p-5 rounded-b-lg font-mono text-sm overflow-x-auto mb-6">
             
+            {/* NOVO: CÁLCULO DA GRELHA DINÂMICA MAXIMIZADA */}
+            {(() => {
+              let maxGridLength = refDataState.sequence.length;
+              
+              compDataListState.forEach(compData => {
+                if (!compData.loading && !compData.error && compData.sequence) {
+                  const stats = calculateStats(refDataState.sequence, compData.sequence);
+                  // O tamanho necessário é o tamanho da proteína do animal menos o desvio inicial
+                  const requiredLength = compData.sequence.length - stats.offset;
+                  if (requiredLength > maxGridLength) {
+                    maxGridLength = requiredLength;
+                  }
+                }
+              });
+
+              // Cria um array com o tamanho exato da maior sequência para mapear a grelha
+              const gridIndices = Array.from({ length: maxGridLength }, (_, i) => i);
+
+              return (
+                <>
             {/* LINHA DE REFERÊNCIA (FIXA NO SCROLL) */}
-            <div className="flex mb-1 items-center">
-              <div className="w-64 shrink-0 pr-4 bg-[#1c2a39] sticky left-0 z-10 flex flex-col justify-center border-r border-gray-700/30 mr-2">
-                <span className="text-blue-400 font-bold block truncate" title={refDataState.species.replace(/_/g, ' ')}>⭐ {refDataState.species.replace(/_/g, ' ').toUpperCase()}</span>
-                <span className="text-gray-500 text-[10px]">ID: {refDataState.id}</span>
-              </div>
-              <div className="flex gap-[1px]">
-                {refDataState.sequence.split('').map((char, index) => (
-                  <span key={`h-${index}`} className="w-[14px] text-center inline-block font-bold">{char}</span>
-                ))}
-              </div>
-            </div>
+                  <div className="flex mb-1 items-center">
+                    <div className="w-64 shrink-0 pr-4 bg-[#1c2a39] sticky left-0 z-10 flex flex-col justify-center border-r border-gray-700/30 mr-2">
+                      <span className="text-blue-400 font-bold block truncate" title={refDataState.species.replace(/_/g, ' ')}>⭐ {refDataState.species.replace(/_/g, ' ').toUpperCase()}</span>
+                      <span className="text-gray-500 text-[10px]">ID: {refDataState.id}</span>
+                    </div>
+                    <div className="flex gap-[1px]">
+                      {gridIndices.map((index) => {
+                        const char = refDataState.sequence[index];
+                        return (
+                          <span key={`h-${index}`} className={`w-[14px] text-center inline-block font-bold ${!char ? 'text-gray-500 opacity-30' : ''}`}>
+                            {char || '-'}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
 
             {/* A RÉGUA DE POSIÇÕES */}
-            <div className="flex my-3 items-center bg-[#15202b] py-1.5 rounded-sm border-y border-gray-700/50">
-              <div className="w-64 shrink-0 pr-4 text-right bg-[#15202b] sticky left-0 z-10 border-r border-gray-700/30 mr-2">
-                <span className="text-gray-400 text-[10px] font-semibold uppercase tracking-wider block">Posição</span>
-              </div>
-              <div className="flex gap-[1px]">
-                {refDataState.sequence.split('').map((_, index) => {
-                  const pos = index + 1;
-                  const isDecade = pos % 10 === 0;
-                  return (
-                    <span key={`ruler-${index}`} className={`w-[14px] text-center inline-block ${isDecade ? 'text-[9.5px] text-white font-bold' : 'text-[7.5px] text-gray-500'}`} style={{ overflow: 'visible' }}>
-                      {isDecade ? pos : (pos % 10)}
-                    </span>
-                  );
-                })}
-              </div>
-            </div>
+                  <div className="flex my-3 items-center bg-[#15202b] py-1.5 rounded-sm border-y border-gray-700/50">
+                    <div className="w-64 shrink-0 pr-4 text-right bg-[#15202b] sticky left-0 z-10 border-r border-gray-700/30 mr-2">
+                      <span className="text-gray-400 text-[10px] font-semibold uppercase tracking-wider block">Posição</span>
+                    </div>
+                    <div className="flex gap-[1px]">
+                      {gridIndices.map((index) => {
+                        const pos = index + 1;
+                        const isDecade = pos % 10 === 0;
+                        return (
+                          <span key={`ruler-${index}`} className={`w-[14px] text-center inline-block ${isDecade ? 'text-[9.5px] text-white font-bold' : 'text-[7.5px] text-gray-500'}`} style={{ overflow: 'visible' }}>
+                            {isDecade ? pos : (pos % 10)}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
 
             {/* AS PISTAS DE COMPARAÇÃO INTERATIVAS (EDITAR / APAGAR) */}
             <div className="flex flex-col gap-2">
@@ -511,43 +527,42 @@ export default function ToolDemo({ onAnalysisComplete }) {
                     </div>
 
                     {/* COLUNA DIREITA FLUIDA (Aminoácidos alinhados de forma inteligente) */}
-                    {compData.loading ? (
-                      <span className="text-xs text-blue-300 animate-pulse pl-2 italic">A atualizar via Ensembl API...</span>
-                    ) : compData.error ? (
-                      <span className="text-red-400 text-xs pl-2 truncate max-w-xl" title={compData.error}>⚠️ {compData.error}</span>
-                    ) : (
-                      <div className="flex gap-[1px]">
-                        {refDataState.sequence.split('').map((refChar, index) => {
-                          // Calcula em que posição da sequência do animal estamos com base no offset
-                          const compIdx = index + stats.offset;
-                          const compChar = compData.sequence[compIdx];
+                          {compData.loading ? (
+                            <span className="text-xs text-blue-300 animate-pulse pl-2 italic">A atualizar via Ensembl API...</span>
+                          ) : compData.error ? (
+                            <span className="text-red-400 text-xs pl-2 truncate max-w-xl" title={compData.error}>⚠️ {compData.error}</span>
+                          ) : (
+                            <div className="flex gap-[1px]">
+                              {gridIndices.map((index) => {
+                                const refChar = refDataState.sequence[index];
+                                const compIdx = index + stats.offset;
+                                const compChar = compData.sequence[compIdx];
 
-                          // Se estivermos numa zona onde o animal não tem proteína (fragmento truncado/gap)
-                          if (compIdx < 0 || compIdx >= compData.sequence.length) {
-                            return (
-                              <span 
-                                key={`c-${trackIdx}-${index}`} 
-                                className="w-[14px] text-center inline-block rounded-sm text-gray-500 opacity-30 font-bold"
-                                title="Gap de Sequência"
-                              >
-                                -
-                              </span>
-                            );
-                          }
+                                if (compIdx < 0 || compIdx >= compData.sequence.length) {
+                                  return (
+                                    <span 
+                                      key={`c-${trackIdx}-${index}`} 
+                                      className="w-[14px] text-center inline-block rounded-sm text-gray-500 opacity-30 font-bold"
+                                      title="Gap de Sequência"
+                                    >
+                                      -
+                                    </span>
+                                  );
+                                }
 
-                          // Comparação real após compensar o desalinhamento
-                          const isDiff = compChar !== refChar;
-                          return (
-                            <span 
-                              key={`c-${trackIdx}-${index}`} 
-                              className={`w-[14px] text-center inline-block rounded-sm ${isDiff ? 'bg-red-500 text-white font-bold' : 'text-gray-400 opacity-60'}`}
-                            >
-                              {compChar}
-                            </span>
-                          );
-                        })}
-                      </div>
-                    )}
+                                // Nova Lógica: Se o humano não tiver letra nesta posição, é sempre uma diferença (inserção)
+                                const isDiff = !refChar || compChar !== refChar;
+                                return (
+                                  <span 
+                                    key={`c-${trackIdx}-${index}`} 
+                                    className={`w-[14px] text-center inline-block rounded-sm ${isDiff ? 'bg-red-500 text-white font-bold' : 'text-gray-400 opacity-60'}`}
+                                  >
+                                    {compChar}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          )}
 
                   </div>
                 );
@@ -592,13 +607,13 @@ export default function ToolDemo({ onAnalysisComplete }) {
                   )}
                 </div>
               </div>
-            </div>
-
+            </div> 
+            </>
+          );
+        })()}
           </div>
         </div>
       )}
     </section>
   );
 }
-
-
