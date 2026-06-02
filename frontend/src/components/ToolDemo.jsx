@@ -106,45 +106,63 @@ export default function ToolDemo({ onAnalysisComplete }) {
       let geneData = null;
       let lookupRes = null;
 
-      // ESTRATÉGIA DE BUSCA 1: Nomenclatura Humana/Primatas (Tudo Maiúsculo) -> Ex: TP53
-      lookupRes = await fetch(`https://rest.ensembl.org/lookup/symbol/${species}/${baseSymbol}?expand=1`, {
-        headers: { 'Content-Type': 'application/json' }
-      });
-
-      // ESTRATÉGIA DE BUSCA 2: Nomenclatura de Roedores/Mamíferos (Capitalizado) -> Ex: Trp53
-      if (!lookupRes.ok) {
-        const capitalized = baseSymbol.charAt(0) + baseSymbol.slice(1).toLowerCase();
-        lookupRes = await fetch(`https://rest.ensembl.org/lookup/symbol/${species}/${capitalized}?expand=1`, {
-          headers: { 'Content-Type': 'application/json' }
-        });
+      // 1. SOLUÇÃO BIOINFORMÁTICA AVANÇADA (Compara Orthologs API)
+      if (species !== 'homo_sapiens') {
+        try {
+          const homologyRes = await fetch(`https://rest.ensembl.org/homology/symbol/homo_sapiens/${baseSymbol}?target_species=${species}&type=orthologues`, {
+            headers: { 'Content-Type': 'application/json' }
+          });
+          
+          if (homologyRes.ok) {
+            const homologyJson = await homologyRes.json();
+            const homologies = homologyJson.data?.[0]?.homologies;
+            
+            if (homologies && homologies.length > 0) {
+              const bestOrtholog = homologies.find(h => h.type.includes('one2one')) || homologies[0];
+              const targetGeneId = bestOrtholog.target.id;
+              
+              lookupRes = await fetch(`https://rest.ensembl.org/lookup/id/${targetGeneId}?expand=1`, {
+                headers: { 'Content-Type': 'application/json' }
+              });
+            }
+          }
+        } catch (error) {
+          console.warn(`Homologia falhou para ${species}. A iniciar fallback de nomenclatura...`);
+        }
       }
 
-      // ESTRATÉGIA DE BUSCA 3: Minúsculas absolutas -> Ex: tp53
-      if (!lookupRes.ok) {
-        lookupRes = await fetch(`https://rest.ensembl.org/lookup/symbol/${species}/${baseSymbol.toLowerCase()}?expand=1`, {
-          headers: { 'Content-Type': 'application/json' }
-        });
+      // 2. FALLBACK DE NOMENCLATURA (Rede de segurança)
+      if (!lookupRes || !lookupRes.ok) {
+        lookupRes = await fetch(`https://rest.ensembl.org/lookup/symbol/${species}/${baseSymbol}?expand=1`, { headers: { 'Content-Type': 'application/json' } });
+
+        if (!lookupRes.ok) {
+          const capitalized = baseSymbol.charAt(0) + baseSymbol.slice(1).toLowerCase();
+          lookupRes = await fetch(`https://rest.ensembl.org/lookup/symbol/${species}/${capitalized}?expand=1`, { headers: { 'Content-Type': 'application/json' } });
+        }
+
+        if (!lookupRes.ok) {
+          lookupRes = await fetch(`https://rest.ensembl.org/lookup/symbol/${species}/${baseSymbol.toLowerCase()}?expand=1`, { headers: { 'Content-Type': 'application/json' } });
+        }
       }
 
-      if (!lookupRes.ok) throw new Error(`Gene não mapeado pelo Ensembl nesta espécie.`);
+      if (!lookupRes || !lookupRes.ok) throw new Error(`Ortólogo não mapeado no genoma.`);
       
       geneData = await lookupRes.json();
       
-      // ALGORITMO BIOINFORMÁTICO DE SELEÇÃO DE ISOFORMA (Resolve a dúvida da professora)
+      // NOVO: Extrair o nome oficial (acrónimo) que o Ensembl usa para esta espécie exata
+      const actualGeneSymbol = geneData.display_name || baseSymbol;
+      
+      // 3. SELEÇÃO DE ISOFORMA CANÓNICA
       let bestTranslationId = null;
       let maxLength = 0;
 
       for (const transcript of (geneData.Transcript || [])) {
         if (transcript.Translation && transcript.Translation.id) {
           const currentLength = transcript.Translation.length || 0;
-
-          // Se o Ensembl nos disser explicitamente que esta é a isoforma canónica, paramos logo!
           if (transcript.is_canonical === 1) {
             bestTranslationId = transcript.Translation.id;
             break;
           }
-
-          // Se não houver indicação canónica, vamos guardando a proteína mais longa
           if (currentLength > maxLength) {
             maxLength = currentLength;
             bestTranslationId = transcript.Translation.id;
@@ -152,9 +170,9 @@ export default function ToolDemo({ onAnalysisComplete }) {
         }
       }
 
-      if (!bestTranslationId) throw new Error(`Sequência peptídica não encontrada no genoma.`);
+      if (!bestTranslationId) throw new Error(`Sequência peptídica em falta.`);
 
-      // Extração da FASTA final
+      // 4. EXTRAÇÃO DA FASTA
       const seqRes = await fetch(`https://rest.ensembl.org/sequence/id/${bestTranslationId}?type=protein`, {
         headers: { 'Content-Type': 'text/x-fasta' } 
       });
@@ -164,9 +182,18 @@ export default function ToolDemo({ onAnalysisComplete }) {
       const rawFastaText = await seqRes.text();
       const cleanedSequence = rawFastaText.split('\n').filter(line => !line.startsWith('>')).join('');
 
-      return { id: bestTranslationId, sequence: cleanedSequence, species: species, rawFastaText };
+      // RETORNO DE SUCESSO COMPLETO
+      return { 
+        id: bestTranslationId, 
+        sequence: cleanedSequence, 
+        species: species, 
+        rawFastaText,
+        actualGeneSymbol // <-- Exportado para a UI
+      };
+      
     } catch (err) {
-      return { species: species, error: err.message, sequence: '' };
+      // RETORNO DE ERRO (Era isto que faltava e causava o erro "Missing catch clause"!)
+      return { species: species, error: err.message, sequence: '', actualGeneSymbol: geneSymbol };
     }
   };
 
@@ -345,7 +372,7 @@ export default function ToolDemo({ onAnalysisComplete }) {
       
       <div className="bg-[#eef3f8] p-6 rounded-lg border border-gray-200 mb-6 flex flex-col lg:flex-row gap-4 items-start lg:items-end">
         {/* INPUT GENE */}
-        <div className="flex-1 w-full relative" ref={dropdownRef}>
+        <div className="flex-1 w-full relative z-50" ref={dropdownRef}>
           <label className="block font-semibold text-[#1c2a39] mb-2">Gene</label>
           <input 
             type="text" 
@@ -355,7 +382,7 @@ export default function ToolDemo({ onAnalysisComplete }) {
             className="w-full border border-gray-300 rounded-md p-3 focus:outline-none focus:ring-2 focus:ring-[#2c5364] uppercase"
           />
           {showSuggestions && (
-            <ul className="absolute z-10 w-full bg-white border border-gray-300 mt-1 rounded-md shadow-lg max-h-60 overflow-y-auto">
+            <ul className="absolute z-50 w-full bg-white border border-gray-300 mt-1 rounded-md shadow-lg max-h-60 overflow-y-auto">
               {filteredGenes.map((gene) => (
                 <li key={gene} onClick={() => { setSearchTerm(gene); setShowSuggestions(false); }} className="p-3 hover:bg-[#eef3f8] cursor-pointer font-medium border-b border-gray-100">
                   🧬 {gene}
@@ -376,7 +403,7 @@ export default function ToolDemo({ onAnalysisComplete }) {
         </div>
         
         {/* DROPDOWN ESPÉCIES */}
-        <div className="flex-1 w-full relative" ref={multiSelectRef}>
+        <div className="flex-1 w-full relative z-40" ref={multiSelectRef}>
           <label className="block font-semibold text-[#1c2a39] mb-2">Animais a Comparar</label>
           <div 
             onClick={() => setShowMultiSelect(!showMultiSelect)} 
@@ -443,7 +470,9 @@ export default function ToolDemo({ onAnalysisComplete }) {
                   <div className="flex mb-1 items-center">
                     <div className="w-64 shrink-0 pr-4 bg-[#1c2a39] sticky left-0 z-10 flex flex-col justify-center border-r border-gray-700/30 mr-2">
                       <span className="text-blue-400 font-bold block truncate" title={refDataState.species.replace(/_/g, ' ')}>⭐ {refDataState.species.replace(/_/g, ' ').toUpperCase()}</span>
-                      <span className="text-gray-500 text-[10px]">ID: {refDataState.id}</span>
+                      <span className="text-gray-500 text-[10px]">
+                        Gene: <strong className="text-blue-300">{refDataState.actualGeneSymbol}</strong> | ID: {refDataState.id}
+                      </span>
                     </div>
                     <div className="flex gap-[1px]">
                       {gridIndices.map((index) => {
@@ -492,6 +521,13 @@ export default function ToolDemo({ onAnalysisComplete }) {
                       <span className="text-green-400 font-bold block truncate" title={compData.species.replace(/_/g, ' ')}>
                         {compData.species.replace(/_/g, ' ').toUpperCase()}
                       </span>
+                      
+                      {/* NOVO: Mostrar o Nome Oficial do Gene e o ID no Animal */}
+                      {hasData && (
+                        <span className="text-gray-500 text-[10px] block truncate mb-0.5">
+                          Gene: <strong className="text-green-200">{compData.actualGeneSymbol}</strong> | ID: {compData.id}
+                        </span>
+                      )}
                       
                       {/* Sub-barra de Status + Botões */}
                       <div className="flex justify-between items-center text-[10px] mt-0.5">
@@ -596,7 +632,7 @@ export default function ToolDemo({ onAnalysisComplete }) {
                                     <span 
                                       className={`w-[14px] text-center inline-block rounded-sm transition-colors ${
                                         isDiff 
-                                          ? 'bg-red-500 text-white font-bold cursor-help hover:bg-red-400 hover:shadow-[0_0_8px_rgba(239,68,68,0.6)]' 
+                                          ? 'bg-red-500 text-white font-bold cursor-pointer hover:bg-red-400 hover:shadow-[0_0_8px_rgba(239,68,68,0.6)]' 
                                           : 'text-gray-400 opacity-60'
                                       }`}
                                     >
