@@ -48,6 +48,8 @@ export default function ToolDemo({ onAnalysisComplete }) {
   // NOVO: Estado para controlar a Janela Dinâmica (Modal) das Mutações
   const [mutationModal, setMutationModal] = useState({ isOpen: false, species: '', mutations: [] });
 
+  const fileInputRef = useRef(null);
+
   const handleMoveTrack = (index, direction) => {
     const newIndex = direction === 'up' ? index - 1 : index + 1;
     
@@ -308,6 +310,75 @@ export default function ToolDemo({ onAnalysisComplete }) {
         }, {})
       });
     }
+  };
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target.result;
+      const lines = text.split('\n');
+      let header = "USER_SEQUENCE";
+      let seq = "";
+
+      // Parser bioinformático para FASTA
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('>')) {
+          // Extrai o primeiro nome do cabeçalho
+          const parts = trimmed.substring(1).split(' ');
+          if (parts[0]) header = parts[0].replace(/[^a-zA-Z0-9_]/g, '_').toUpperCase();
+        } else if (trimmed) {
+          seq += trimmed; // Concatena os blocos de aminoácidos
+        }
+      }
+
+      if (!seq) {
+        setErrorMsg("O ficheiro não contém uma sequência peptídica válida.");
+        return;
+      }
+
+      // Criar um ID único para o React não se perder
+      const customSpeciesId = `UPLOAD_${header}_${Math.floor(Math.random() * 1000)}`;
+      const targetGene = searchTerm.toUpperCase();
+
+      const newData = {
+        species: customSpeciesId,
+        id: 'Ficheiro Local',
+        sequence: seq.toUpperCase(),
+        actualGeneSymbol: 'FASTA',
+        rawFastaText: text,
+        loading: false,
+        error: null
+      };
+
+      const updatedList = [...compSpeciesList, customSpeciesId];
+      setCompSpeciesList(updatedList);
+
+      setCompDataListState(prev => {
+        const next = [...prev, newData];
+        
+        // Sincroniza o novo ficheiro com o resto da pipeline (Estatísticas e 3D)
+        if (onAnalysisComplete) {
+          onAnalysisComplete({
+            gene: targetGene,
+            refSpecies: refSpecies,
+            compSpeciesList: updatedList,
+            refSequence: refDataState?.sequence,
+            compSequences: next.reduce((acc, item) => {
+              if (item && !item.error) acc[item.species] = item.sequence;
+              return acc;
+            }, {})
+          });
+        }
+        return next;
+      });
+    };
+    
+    reader.readAsText(file);
+    e.target.value = null; // Reset para permitir upload consecutivo do mesmo ficheiro
   };
 
   // 2. ESTATÍSTICAS COM JANELA DESLIZANTE INFINITA E NOTAÇÃO HGVS
@@ -673,30 +744,36 @@ export default function ToolDemo({ onAnalysisComplete }) {
                       >
                         <option value="" disabled>Selecionar espécie...</option>
                         {SPECIES_DATABASE.map(s => (
-                          <option 
-                            key={`add-${s.id}`} 
-                            value={s.id} 
-                            disabled={s.id === refSpecies || compSpeciesList.includes(s.id)}
-                          >
+                          <option key={`add-${s.id}`} value={s.id} disabled={s.id === refSpecies || compSpeciesList.includes(s.id)}>
                             {s.name}
                           </option>
                         ))}
                       </select>
-                      <button 
-                        onClick={() => setIsAddingTrack(false)}
-                        className="text-gray-400 hover:text-white transition-colors cursor-pointer shrink-0"
-                      >
+                      <button onClick={() => setIsAddingTrack(false)} className="text-gray-400 hover:text-white transition-colors cursor-pointer shrink-0">
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                       </button>
                     </div>
                   ) : (
-                    <button 
-                      onClick={() => setIsAddingTrack(true)}
-                      className="flex items-center justify-center gap-2 w-full py-1.5 border border-dashed border-gray-600 rounded text-gray-400 hover:text-blue-400 hover:border-blue-400 hover:bg-[#15202b] transition-all text-xs font-semibold cursor-pointer"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                      Adicionar Espécie
-                    </button>
+                    <div className="flex gap-2 w-full">
+                      <button 
+                        onClick={() => setIsAddingTrack(true)}
+                        className="flex-1 flex items-center justify-center gap-2 py-1.5 border border-dashed border-gray-600 rounded text-gray-400 hover:text-blue-400 hover:border-blue-400 hover:bg-[#15202b] transition-all text-[11px] font-semibold cursor-pointer"
+                        title="Adicionar da Base de Dados Ensembl"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        API Ensembl
+                      </button>
+                      
+                      <button 
+                        onClick={() => fileInputRef.current?.click()}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-1.5 border border-dashed border-purple-700/60 rounded text-purple-400 hover:text-purple-300 hover:border-purple-400 hover:bg-[#15202b] transition-all text-[11px] font-semibold cursor-pointer"
+                        title="Upload do teu próprio ficheiro de Sequência"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                        FASTA Local
+                      </button>
+                      <input type="file" accept=".fasta,.fa,.txt" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
+                    </div>
                   )}
                 </div>
               </div>

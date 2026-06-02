@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 
 const HUMAN_FALLBACK = {
   "BRCA1": "4IGK", "BRCA2": "1IYJ", "EGFR": "1M14", "PTEN": "1D5R", "APOE": "1LE4", "APP": "1MWP", 
-  "SNCA": "1X6B", "HTT": "6EZV", "CFTR": "5UAK", "TNF": "1TNF", "IL6": "1ALU", "VEGFA": "1VPF"
+  "SNCA": "1X6B", "HTT": "6EZV", "CFTR": "5UAK", "TNF": "1TNF", "IL6": "1ALU", "VEGFA": "1VPF",
+  "APC": "3NMW" 
 };
 
 
@@ -151,6 +152,8 @@ export default function ProteinViewer({ analysisState }) {
 
       setLabel(`A contactar AlphaFold...`);
       const afRes = await fetch(`https://alphafold.ebi.ac.uk/api/prediction/${accession}`);
+      
+      // Se a IA do AlphaFold não tiver a estrutura (ex: proteínas gigantes), vai disparar este erro e saltar para o 'catch'!
       if (!afRes.ok) throw new Error("Sem IA AlphaFold.");
       
       const afJson = await afRes.json();
@@ -167,11 +170,36 @@ export default function ProteinViewer({ analysisState }) {
       viewer.clear();
       viewer.addModel(pdbText, "pdb", { keepH: false });
       
-      applyStyles(viewer, isLeft); // <-- Agora sabe se é Humano ou Animal!
+      applyStyles(viewer, isLeft); 
       viewer.zoomTo();
       setLabel(sourceName);
 
     } catch (err) {
+      
+      // NOVO: MOTOR DE RESGATE (FALLBACK) PARA A BASE DE DADOS RCSB PDB
+      if (targetSpeciesId === 'homo_sapiens' && HUMAN_FALLBACK[targetGene]) {
+        try {
+          const pdbId = HUMAN_FALLBACK[targetGene];
+          setLabel(`A transferir PDB: ${pdbId}...`);
+          
+          // Vai buscar a estrutura real validada em laboratório!
+          const pdbRes = await fetch(`https://files.rcsb.org/download/${pdbId}.pdb`);
+          if (pdbRes.ok) {
+            const pdbText = await pdbRes.text();
+            viewer.clear();
+            viewer.addModel(pdbText, "pdb", { keepH: false });
+            applyStyles(viewer, isLeft);
+            viewer.zoomTo();
+            setLabel(`RCSB PDB: ${pdbId}`); // Indica na UI que é uma estrutura real e não IA
+            setLoading(false);
+            return; // Sai da função com sucesso
+          }
+        } catch (fallbackErr) {
+           console.warn("Falha no motor de resgate RCSB.");
+        }
+      }
+
+      // Se não houver fallback ou também falhar, mostra o botão clássico
       setLabel("MANUAL_UPLOAD");
     } finally {
       setLoading(false);
@@ -179,11 +207,13 @@ export default function ProteinViewer({ analysisState }) {
   };
 
   useEffect(() => {
+    // Nota o 'true' no final, garante que as mutações não ficam invertidas na janela esquerda
     if (gene && refSpecies) loadStructure(gene, refSpecies, instLeft.current, setLabelLeft, setLoadingLeft, true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gene, refSpecies]);
 
   useEffect(() => {
+    // Nota o 'false' no final, garante o alinhamento de fragmentos na janela direita
     if (gene && activeCompSpecies) loadStructure(gene, activeCompSpecies, instRight.current, setLabelRight, setLoadingRight, false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gene, activeCompSpecies]);
@@ -276,7 +306,17 @@ export default function ProteinViewer({ analysisState }) {
             <span className="text-[10px] bg-gray-800 px-2 py-1 rounded text-green-300">{labelRight || 'A PROCESSAR'}</span>
           </div>
           <div className="relative w-full h-[400px] rounded-b-lg overflow-hidden border-2 border-gray-200">
-            {loadingRight && (
+            {/* NOVO: Interface de Upload de PDB caso a IA falhe ou a sequência seja manual */}
+            {labelRight === "MANUAL_UPLOAD" ? (
+              <div className="absolute inset-0 bg-[#1c2a39] flex flex-col items-center justify-center text-white z-10 p-6 text-center">
+                <span className="text-sm font-mono mb-2 text-yellow-400">⚠️ Estrutura 3D não encontrada na IA.</span>
+                <span className="text-xs text-gray-400 mb-4">Se este é um ficheiro local que carregaste (FASTA) ou uma proteína desconhecida, faz o upload do ficheiro .pdb correspondente.</span>
+                <label className="bg-[#2c5364] hover:bg-[#3a6b82] text-white px-5 py-2 rounded cursor-pointer font-bold text-xs transition-colors shadow-lg border border-[#48829c]">
+                  Upload Ficheiro .PDB
+                  <input type="file" accept=".pdb" className="hidden" onChange={(e) => handleManualUpload(e, instRight.current, setLabelRight)} />
+                </label>
+              </div>
+            ) : loadingRight && (
               <div className="absolute inset-0 bg-[#1c2a39] flex flex-col items-center justify-center text-white z-10">
                 <div className="animate-spin text-green-500 text-3xl mb-2">⚙</div>
                 <span className="text-xs font-mono animate-pulse">{labelRight || 'A calcular...'}</span>
