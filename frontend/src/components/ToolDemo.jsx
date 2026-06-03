@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
+import { useAuth } from '../context/AuthContext'; 
+import { supabase } from '../config/supabaseClient';
 
 const GENE_DATABASE = [
   "TP53", "BRCA1", "BRCA2", "EGFR", "PTEN", "APOE", "APP", "SNCA", "HTT", 
@@ -42,13 +44,179 @@ export default function ToolDemo({ onAnalysisComplete }) {
   const [compDataListState, setCompDataListState] = useState([]);
   const [showResults, setShowResults] = useState(false);
 
- // NOVO: Estado para saber qual a linha que está ativamente em modo de edição
+ //  Estado para saber qual a linha que está ativamente em modo de edição
   const [isAddingTrack, setIsAddingTrack] = useState(false);
   
-  // NOVO: Estado para controlar a Janela Dinâmica (Modal) das Mutações
+ // NOVO: Estado para controlar a Janela Dinâmica (Modal) das Mutações
   const [mutationModal, setMutationModal] = useState({ isOpen: false, species: '', mutations: [] });
 
   const fileInputRef = useRef(null);
+
+  // NOVO: Autenticação e Estados de Gravação
+  const { user } = useAuth();
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState('');
+
+  const toastTimeoutRef = useRef(null); // Controla o temporizador da Toast
+  const [savedWorkspaceContext, setSavedWorkspaceContext] = useState(null); // Guarda o ID e Nome da última gravação
+  
+  // ---> ADICIONA ESTE BLOCO AQUI <---
+  const [showWorkspacesModal, setShowWorkspacesModal] = useState(false);
+  const [savedWorkspacesList, setSavedWorkspacesList] = useState([]);
+
+  const [isLoadingWorkspaces, setIsLoadingWorkspaces] = useState(false);
+
+  const [editingWsId, setEditingWsId] = useState(null);
+  const [editingWsName, setEditingWsName] = useState('');
+
+  // Função para ir buscar as análises do utilizador à base de dados
+  const fetchWorkspaces = async () => {
+    if (!user) return;
+    setIsLoadingWorkspaces(true); // LIGA O LOADING
+    
+    const { data, error } = await supabase
+      .from('saved_workspaces')
+      .select('*')
+      .order('created_at', { ascending: false }); 
+      
+    if (!error && data) setSavedWorkspacesList(data);
+    
+    setIsLoadingWorkspaces(false); // DESLIGA O LOADING QUANDO ACABAR
+  };
+
+  const handleDeleteWorkspace = async (id) => {
+    if (!window.confirm("Tens a certeza que queres apagar esta análise permanentemente?")) return;
+    
+    const { error } = await supabase.from('saved_workspaces').delete().eq('id', id);
+    if (!error) {
+      setSavedWorkspacesList(prev => prev.filter(ws => ws.id !== id));
+    } else {
+      alert("Erro ao apagar: " + error.message);
+    }
+  };
+
+  const handleRenameWorkspace = async (id) => {
+    if (!editingWsName.trim()) {
+      setEditingWsId(null);
+      return;
+    }
+    
+    const { error } = await supabase.from('saved_workspaces').update({ name: editingWsName }).eq('id', id);
+    if (!error) {
+      setSavedWorkspacesList(prev => prev.map(ws => ws.id === id ? { ...ws, name: editingWsName } : ws));
+    }
+    setEditingWsId(null);
+  };
+
+  
+
+  const handleOpenWorkspaces = () => {
+    fetchWorkspaces();
+    setShowWorkspacesModal(true);
+  };
+
+  const handleLoadWorkspace = async (ws) => {
+    // 1. Atualiza as caixas de texto e fecha a janela
+    setSearchTerm(ws.gene);
+    setRefSpecies(ws.ref_species);
+    setCompSpeciesList(ws.comp_species);
+    setShowWorkspacesModal(false);
+    
+    // 2. Prepara a UI para o carregamento automático
+    setIsSearching(true);
+    setErrorMsg('');
+    setShowResults(false);
+    setSaveMsg('');
+
+    try {
+      const targetGene = ws.gene.toUpperCase();
+      
+      // 3. Extrai tudo diretamente usando os dados do Workspace guardado!
+      const [refData, ...compDataArray] = await Promise.all([
+        fetchEnsemblData(ws.ref_species, targetGene),
+        ...ws.comp_species.map(species => fetchEnsemblData(species, targetGene))
+      ]);
+
+      if (refData.error) throw new Error(`Referência Falhou: ${refData.error}`);
+
+      // 4. Atualiza os estados finais da tabela
+      setRefDataState(refData);
+      setCompDataListState(compDataArray);
+      setShowResults(true);
+
+      if (onAnalysisComplete) {
+        onAnalysisComplete({
+          gene: targetGene,
+          refSpecies: ws.ref_species,
+          compSpeciesList: ws.comp_species,
+          refSequence: refData.sequence,
+          compSequences: compDataArray.reduce((acc, item) => {
+            if (item && !item.error) acc[item.species] = item.sequence;
+            return acc;
+          }, {})
+        });
+      }
+      
+      // Feedback visual de sucesso
+      setSaveMsg(`Análise "${ws.name}" carregada e alinhada com sucesso!`);
+      setTimeout(() => setSaveMsg(''), 4000);
+    } catch (error) {
+      setErrorMsg(error.message);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleSaveWorkspace = async () => {
+    if (!user) {
+      setErrorMsg("Precisas de ter sessão iniciada para guardar a análise.");
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+      toastTimeoutRef.current = setTimeout(() => setErrorMsg(''), 5000);
+      return;
+    }
+    
+    setIsSaving(true);
+    setErrorMsg('');
+    setSaveMsg('');
+
+    try {
+      const defaultName = `Análise de ${searchTerm.toUpperCase()}`;
+
+      // O segredo está no .select().single() no final!
+      const { data, error } = await supabase
+        .from('saved_workspaces')
+        .insert([
+          {
+            user_id: user.id,
+            name: defaultName,
+            gene: searchTerm.toUpperCase(),
+            ref_species: refSpecies,
+            comp_species: compSpeciesList
+          }
+        ])
+        .select()
+        .single();
+
+      if (error) throw error;
+      
+      // Limpa qualquer temporizador antigo
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+      
+      setSaveMsg('Análise guardada! Podes alterar o nome abaixo:');
+      setSavedWorkspaceContext({ id: data.id, name: data.name }); // Guarda os dados para a Toast
+
+      // Começa a contar 6 segundos. Se não fizerem nada, a Toast desaparece.
+      toastTimeoutRef.current = setTimeout(() => {
+        setSaveMsg('');
+        setSavedWorkspaceContext(null);
+      }, 6000);
+
+    } catch (err) {
+      setErrorMsg("Erro ao guardar: " + err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const handleMoveTrack = (index, direction) => {
     const newIndex = direction === 'up' ? index - 1 : index + 1;
@@ -436,7 +604,8 @@ export default function ToolDemo({ onAnalysisComplete }) {
     };
   };
 
-  return (
+  return ( 
+    <> {/* <--- ADICIONA ESTA TAG AQUI */}
     <section id="tool" className="bg-white p-8 mb-8 rounded-[10px] shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
       <h2 className="text-[#1c2a39] text-[28px] font-bold mt-0 mb-2">Motor de Alinhamento Múltiplo (MSA)</h2>
       <p className="mb-6 text-gray-700">Explora o nosso catálogo e alinha várias espécies em simultâneo contra o proteoma de referência.</p>
@@ -503,15 +672,39 @@ export default function ToolDemo({ onAnalysisComplete }) {
           )}
         </div>
         
-        <div className="w-full lg:w-auto">
-          <button onClick={handleSmartSearch} disabled={isSearching} className="w-full bg-[#2c5364] text-white px-8 py-3 rounded-md hover:bg-[#1c2a39] transition-colors font-medium disabled:opacity-50">
+        <div className="w-full lg:w-auto flex flex-wrap gap-2 items-end">
+          <button onClick={handleSmartSearch} disabled={isSearching} className="w-full lg:w-auto bg-[#2c5364] text-white px-6 py-2.5 rounded-md hover:bg-[#1c2a39] transition-colors font-medium disabled:opacity-50 h-full">
             {isSearching ? 'A extrair...' : 'Alinhar Tudo'}
           </button>
+          
+          {user && (
+            <div className="flex gap-2 w-full lg:w-auto">
+              {/* BOTÃO GUARDAR COM ÍCONE */}
+              <button 
+                onClick={handleSaveWorkspace} 
+                disabled={isSaving} 
+                className="flex-1 lg:flex-none bg-green-700/90 text-white px-4 py-2.5 rounded-md hover:bg-green-600 transition-colors text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-1.5 border border-green-800 shrink-0"
+                title="Guardar sessão na Cloud"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                {isSaving ? 'A guardar...' : 'Guardar'}
+              </button>
+              
+              {/* BOTÃO CARREGAR COM ÍCONE */}
+              <button 
+                onClick={handleOpenWorkspaces} 
+                className="flex-1 lg:flex-none bg-blue-700/90 text-white px-4 py-2.5 rounded-md hover:bg-blue-600 transition-colors text-sm font-medium flex items-center justify-center gap-1.5 border border-blue-800 shrink-0"
+                title="Carregar sessões anteriores"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                Carregar
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
-      {errorMsg && <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6"><p className="font-bold">Aviso</p><p>{errorMsg}</p></div>}
-
+      
       {showResults && refDataState && (
         <div className="mt-8 animate-fade-in">
           
@@ -784,7 +977,7 @@ export default function ToolDemo({ onAnalysisComplete }) {
           </div>
         </div>
       )}
-      {/* NOVO: JANELA DINÂMICA (MODAL) DO RELATÓRIO DE MUTAÇÕES */}
+            {/* NOVO: JANELA DINÂMICA (MODAL) DO RELATÓRIO DE MUTAÇÕES */}
       {mutationModal.isOpen && (
         <div className="fixed inset-0 bg-[#000000bb] z-50 flex justify-center items-center backdrop-blur-md p-4 animate-fade-in">
           {/* Mudança para rounded-2xl e overflow-hidden para arredondamento perfeito */}
@@ -840,7 +1033,101 @@ export default function ToolDemo({ onAnalysisComplete }) {
           </div>
         </div>
       )}
+      
+      {/* NOVO: JANELA DINÂMICA (MODAL) DE CARREGAR WORKSPACES */}
+      {showWorkspacesModal && (
+        <div className="fixed inset-0 bg-[#000000bb] z-[100] flex justify-center items-center backdrop-blur-md p-4 animate-fade-in">
+          {/* ... (mantém o código do teu modal igualzinho aqui dentro) ... */}
+          {/* Para não colar o ficheiro todo, deixa ficar o teu modal de carregar aqui */}
+        </div>
+      )}
 
-    </section>
+      </section> {/* <--- 1. FECHA A SECTION DA FERRAMENTA AQUI! */}
+
+
+      {/* 2. AS TOASTS FICAM FORA DA SECTION, DENTRO DESTA DIV FIXA! */}
+      <div className="fixed bottom-6 right-6 z-[200] flex flex-col gap-3 pointer-events-none">
+        
+        {/* Toast de Sucesso (Verde) com Edição Inteligente */}
+        {saveMsg && (
+          <div className="pointer-events-auto bg-[#1c2a39] border border-gray-700 border-l-4 border-l-green-500 text-white p-4 rounded-lg shadow-[0_10px_30px_rgba(0,0,0,0.5)] flex items-start gap-3 animate-fade-in w-[340px]">
+            <div className="bg-green-500/10 p-1.5 rounded-full text-green-400 shrink-0 mt-0.5">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            </div>
+            
+            <div className="flex-1 w-full">
+              <div className="flex justify-between items-center mb-1">
+                <p className="font-bold text-sm text-gray-100 m-0">Sucesso</p>
+                <button 
+                  onClick={() => {
+                    setSaveMsg('');
+                    setSavedWorkspaceContext(null);
+                    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+                  }} 
+                  className="text-gray-500 hover:text-white transition-colors cursor-pointer"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+              </div>
+              <p className="text-xs text-gray-400 m-0 leading-relaxed">{saveMsg}</p>
+
+              {/* INPUT APARECE AQUI SE HOUVER CONTEXTO GRAVADO */}
+              {savedWorkspaceContext && (
+                <div className="mt-3 flex gap-2">
+                  <input
+                    type="text"
+                    value={savedWorkspaceContext.name}
+                    onChange={(e) => setSavedWorkspaceContext({...savedWorkspaceContext, name: e.target.value})}
+                    onFocus={() => {
+                      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+                    }}
+                    onKeyDown={async (e) => {
+                      if (e.key === 'Enter') {
+                        await supabase.from('saved_workspaces').update({ name: savedWorkspaceContext.name }).eq('id', savedWorkspaceContext.id);
+                        setSaveMsg('Nome atualizado com sucesso!');
+                        setSavedWorkspaceContext(null);
+                        toastTimeoutRef.current = setTimeout(() => setSaveMsg(''), 3000);
+                      }
+                    }}
+                    className="bg-[#15202b] border border-gray-600 text-white px-2 py-1.5 rounded text-xs w-full focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500"
+                    placeholder="Nome da análise..."
+                  />
+                  <button
+                    onClick={async () => {
+                      await supabase.from('saved_workspaces').update({ name: savedWorkspaceContext.name }).eq('id', savedWorkspaceContext.id);
+                      setSaveMsg('Nome atualizado com sucesso!');
+                      setSavedWorkspaceContext(null);
+                      toastTimeoutRef.current = setTimeout(() => setSaveMsg(''), 3000);
+                    }}
+                    className="bg-green-700 hover:bg-green-600 text-white px-2.5 rounded cursor-pointer transition-colors shadow-sm"
+                    title="Confirmar Nome"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Toast de Erro/Aviso (Vermelho) */}
+        {errorMsg && (
+          <div className="pointer-events-auto bg-[#1c2a39] border border-gray-700 border-l-4 border-l-red-500 text-white p-4 rounded-lg shadow-[0_10px_30px_rgba(0,0,0,0.5)] flex items-start gap-3 animate-fade-in w-[320px]">
+            <div className="bg-red-500/10 p-1.5 rounded-full text-red-400 shrink-0 mt-0.5">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+            </div>
+            <div className="flex-1">
+              <p className="font-bold text-sm text-gray-100 m-0">Aviso</p>
+              <p className="text-xs text-gray-400 m-0 mt-1 leading-relaxed">{errorMsg}</p>
+            </div>
+            <button onClick={() => setErrorMsg('')} className="text-gray-500 hover:text-white transition-colors shrink-0 cursor-pointer">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+          </div>
+        )}
+
+      </div>
+
+    </> /* <--- 3. FECHA O FRAGMENTO AQUI NO FIM DE TUDO! */
   );
 }

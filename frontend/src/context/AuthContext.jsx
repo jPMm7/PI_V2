@@ -31,6 +31,7 @@ export const AuthProvider = ({ children }) => {
   // Funções ajudantes para usarmos nos nossos botões mais tarde
   const signIn = (email, password) => supabase.auth.signInWithPassword({ email, password });
   const signUp = (email, password) => supabase.auth.signUp({ email, password });
+  const signInWithGoogle = () => supabase.auth.signInWithOAuth({ provider: 'google' });
   const signOut = () => supabase.auth.signOut();
 
   const value = {
@@ -39,6 +40,7 @@ export const AuthProvider = ({ children }) => {
     signIn,
     signUp,
     signOut,
+    signInWithGoogle,
   };
 
   return (
