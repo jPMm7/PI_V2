@@ -19,6 +19,7 @@
   },
   "homepage": "https://github.com/Forreca05/ProteinasSite#readme",
   "dependencies": {
+    "@supabase/supabase-js": "^2.107.0",
     "express": "^5.2.1"
   },
   "devDependencies": {
