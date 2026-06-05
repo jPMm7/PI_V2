@@ -31,6 +31,10 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
 
   const isZoomingRef = useRef(false); // Sinal para pausar a sincronização durante as viagens
 
+  // NOVO: Memória exata de qual animal está desenhado na janela neste exato milissegundo
+  const loadedLeftRef = useRef(null);
+  const loadedRightRef = useRef(null);
+
   const [outOfBoundsLeft, setOutOfBoundsLeft] = useState(false);
   const [outOfBoundsRight, setOutOfBoundsRight] = useState(false);
 
@@ -85,8 +89,8 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
       const currentLeftView = instLeft.current.getView();
       const currentRightView = instRight.current.getView();
 
-      // SE ESTIVER A VOAR (ZOOM), ATUALIZA A MEMÓRIA MAS NÃO PUXA A CÂMARA!
-      if (isZoomingRef.current) {
+      // MAGIA: SE ESTIVER A VOAR (ZOOM) OU A CARREGAR UMA PROTEÍNA, PAUSA A FÍSICA!
+      if (isZoomingRef.current || loadingLeft || loadingRight) {
         lastLeftView = currentLeftView;
         lastRightView = currentRightView;
         return; 
@@ -111,11 +115,11 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
     return () => clearInterval(syncIntervalRef.current);
   }, [syncViews]);
 
-  // NOVO: Ref para guardar a última versão das sequências para o evento de clique não se perder
-  const latestDataRef = useRef({ refSequence, compSequences, activeCompSpecies, onResidueSelect });
+  // NOVO: Ref para guardar a última versão das sequências e do foco para evitar colisões
+  const latestDataRef = useRef({ refSequence, compSequences, activeCompSpecies, onResidueSelect, selectedGridIndex });
   useEffect(() => {
-    latestDataRef.current = { refSequence, compSequences, activeCompSpecies, onResidueSelect };
-  }, [refSequence, compSequences, activeCompSpecies, onResidueSelect]);
+    latestDataRef.current = { refSequence, compSequences, activeCompSpecies, onResidueSelect, selectedGridIndex };
+  }, [refSequence, compSequences, activeCompSpecies, onResidueSelect, selectedGridIndex]);
 
   // NOVO: Função para descobrir qual a verdadeira posição 3D do animal em relação à grelha
   const getOffset = (refSeq, compSeq) => {
@@ -134,6 +138,13 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
 
   // NOVO: Efeito que dispara o Zoom e as Etiquetas 3D quando a Grelha muda!
   useEffect(() => {
+    if (loadingLeft || loadingRight) return;
+    
+    // ---> MAGIA SUPREMA AQUI <---
+    // Só avança se a janela 3D já tiver MESMO o animal certo desenhado!
+    // Isto impede o bug de focar no gato quando a janela ainda tem o gorila.
+    if (loadedLeftRef.current !== refSpecies || loadedRightRef.current !== activeCompSpecies) return;
+
     isZoomingRef.current = true;
 
     if (selectedGridIndex === null || selectedGridIndex === undefined) {
@@ -144,7 +155,6 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
       instLeft.current?.render();
       instRight.current?.render();
       
-      // Esconde os avisos N/A
       setOutOfBoundsLeft(false);
       setOutOfBoundsRight(false);
       
@@ -157,19 +167,22 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
       instLeft.current.removeAllLabels();
       instLeft.current.removeAllShapes(); 
       
-      // Verifica se a letra clicada existe no Humano
-      const isValidLeft = selectedGridIndex >= 0 && selectedGridIndex < refSequence.length;
-      setOutOfBoundsLeft(!isValidLeft);
-
-      if (isValidLeft) {
+      let atomFoundLeft = false;
+      
+      if (selectedGridIndex >= 0 && selectedGridIndex < refSequence.length) {
         const refResi = selectedGridIndex + 1; // PDB usa índice base-1
         const atomsLeft = instLeft.current.selectedAtoms({resi: refResi, atom: "CA"});
+        
+        // MAGIA: SÓ FAZ ZOOM SE O ÁTOMO EXISTIR REALMENTE NO 3D!
         if (atomsLeft && atomsLeft.length > 0) {
+          atomFoundLeft = true;
           instLeft.current.addSphere({center: {x: atomsLeft[0].x, y: atomsLeft[0].y, z: atomsLeft[0].z}, radius: 2.5, color: "#4fc3f7", alpha: 0.6});
+          instLeft.current.addLabel(`Humano: Posição ${refResi}`, { backgroundColor: "#2c5364", fontColor: "white", backgroundOpacity: 0.9, showBackground: true }, { resi: refResi });
+          instLeft.current.zoomTo({resi: refResi}, 800);
         }
-        instLeft.current.addLabel(`Humano: Posição ${refResi}`, { backgroundColor: "#2c5364", fontColor: "white", backgroundOpacity: 0.9, showBackground: true }, { resi: refResi });
-        instLeft.current.zoomTo({resi: refResi}, 800);
       }
+      
+      setOutOfBoundsLeft(!atomFoundLeft);
       instLeft.current.render();
     }
 
@@ -178,33 +191,36 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
       instRight.current.removeAllLabels();
       instRight.current.removeAllShapes();
 
+      let atomFoundRight = false;
       const offset = getOffset(refSequence, compSequences[activeCompSpecies]);
       const compIndex = selectedGridIndex + offset;
       
-      // Verifica se a letra clicada existe neste Animal
-      const isValidRight = compIndex >= 0 && compIndex < compSequences[activeCompSpecies].length;
-      setOutOfBoundsRight(!isValidRight);
-
-      if (isValidRight) {
+      if (compIndex >= 0 && compIndex < compSequences[activeCompSpecies].length) {
         const compResi = compIndex + 1;
-        const refChar = refSequence[selectedGridIndex];
-        const compChar = compSequences[activeCompSpecies][compIndex];
-        const isMutation = !refChar || refChar !== compChar;
-        const labelColor = isMutation ? "#ef4444" : "#64748b";
-
         const atomsRight = instRight.current.selectedAtoms({resi: compResi, atom: "CA"});
+
+        // MAGIA: SÓ FAZ ZOOM SE O ÁTOMO EXISTIR REALMENTE NO 3D!
         if (atomsRight && atomsRight.length > 0) {
+          atomFoundRight = true;
+          const refChar = refSequence[selectedGridIndex];
+          const compChar = compSequences[activeCompSpecies][compIndex];
+          const isMutation = !refChar || refChar !== compChar;
+          const labelColor = isMutation ? "#ef4444" : "#64748b";
+
           instRight.current.addSphere({center: {x: atomsRight[0].x, y: atomsRight[0].y, z: atomsRight[0].z}, radius: 2.5, color: isMutation ? "red" : "gray", alpha: 0.6});
+          instRight.current.addLabel(`${activeCompSpecies.replace(/_/g, ' ')}: Pos ${compResi}`, { backgroundColor: labelColor, fontColor: "white", backgroundOpacity: 0.9, showBackground: true }, { resi: compResi });
+          instRight.current.zoomTo({resi: compResi}, 800);
         }
-        instRight.current.addLabel(`${activeCompSpecies.replace(/_/g, ' ')}: Pos ${compResi}`, { backgroundColor: labelColor, fontColor: "white", backgroundOpacity: 0.9, showBackground: true }, { resi: compResi });
-        instRight.current.zoomTo({resi: compResi}, 800);
       }
+      
+      setOutOfBoundsRight(!atomFoundRight);
       instRight.current.render();
     }
 
     setTimeout(() => { isZoomingRef.current = false; }, 850);
-  }, [selectedGridIndex, activeCompSpecies, refSequence, compSequences]);
-
+    
+  // ---> ATENÇÃO: Adiciona o `refSpecies` ao fim desta linha! <---
+  }, [selectedGridIndex, activeCompSpecies, refSequence, compSequences, loadingLeft, loadingRight, refSpecies]);
 
   // 1. INICIALIZAÇÃO DO MOTOR WEBGL (Este bloco tinha desaparecido!)
   useEffect(() => {
@@ -363,7 +379,7 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
       });
       
       applyStyles(viewer, isLeft); 
-      viewer.zoomTo();
+      if (latestDataRef.current.selectedGridIndex === null) viewer.zoomTo();
       setLabel(sourceName);
 
     } catch (err) {
@@ -397,7 +413,8 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
             });
 
             applyStyles(viewer, isLeft);
-            viewer.zoomTo();
+            // SÓ faz zoom de ecrã inteiro se não houver mutação clicada!
+            if (latestDataRef.current.selectedGridIndex === null) viewer.zoomTo();
             setLabel(`RCSB PDB: ${pdbId}`); // Indica na UI que é uma estrutura real e não IA
             setLoading(false);
             return; // Sai da função com sucesso
@@ -410,6 +427,10 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
       // Se não houver fallback ou também falhar, mostra o botão clássico
       setLabel("MANUAL_UPLOAD");
     } finally {
+      // ---> NOVO: Regista oficialmente que este animal terminou de ser pintado no ecrã!
+      if (isLeft) loadedLeftRef.current = targetSpeciesId;
+      else loadedRightRef.current = targetSpeciesId;
+      
       setLoading(false);
     }
   };
@@ -440,6 +461,9 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
       viewer.zoomTo();
       viewer.render();
       setLabel(`Ficheiro Local: ${file.name}`);
+      
+      // ---> NOVO: Liberta o bloqueio de zoom para ficheiros locais!
+      loadedRightRef.current = activeCompSpecies; 
     };
     reader.readAsText(file);
   };
@@ -556,7 +580,7 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
             {outOfBoundsLeft && (
               <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-gray-900/80 border border-gray-600 text-gray-300 px-4 py-2 rounded-lg font-mono text-xs z-20 shadow-lg backdrop-blur-sm flex items-center gap-2 animate-fade-in pointer-events-none">
                 <span className="text-yellow-500">⚠️</span>
-                N/A (Gap na Referência)
+                N/A (Posição sem estrutura 3D)
               </div>
             )}
             
@@ -597,7 +621,7 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
             {outOfBoundsRight && (
               <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-gray-900/80 border border-gray-600 text-gray-300 px-4 py-2 rounded-lg font-mono text-xs z-20 shadow-lg backdrop-blur-sm flex items-center gap-2 animate-fade-in pointer-events-none">
                 <span className="text-yellow-500">⚠️</span>
-                N/A (Gap no Animal)
+                N/A (Posição sem estrutura 3D)
               </div>
             )}
             
