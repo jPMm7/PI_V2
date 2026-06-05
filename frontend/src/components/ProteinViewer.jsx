@@ -8,11 +8,9 @@ const HUMAN_FALLBACK = {
 
 
 
-export default function ProteinViewer({ analysisState, selectedGridIndex, onResidueSelect }) {
+export default function ProteinViewer({ analysisState, selectedGridIndex, onResidueSelect, activeCompSpecies, setActiveCompSpecies }) {
   const { gene, refSpecies, compSpeciesList, refSequence, compSequences } = analysisState;
 
-  // Estado que controla qual dos animais da lista está ativamente visível no 3D da direita
-  const [activeCompSpecies, setActiveCompSpecies] = useState(compSpeciesList ? compSpeciesList[0] : 'felis_catus');
 
   const viewerLeftRef = useRef(null);
   const viewerRightRef = useRef(null);
@@ -54,6 +52,8 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
     if (selectedGridIndex === null || selectedGridIndex === undefined) {
       instLeft.current?.removeAllLabels();
       instRight.current?.removeAllLabels();
+      instLeft.current?.removeAllShapes(); // Limpa as esferas apontadoras
+      instRight.current?.removeAllShapes();
       instLeft.current?.render();
       instRight.current?.render();
       return;
@@ -63,6 +63,14 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
     if (instLeft.current) {
       const refResi = selectedGridIndex + 1; // PDB usa índice base-1
       instLeft.current.removeAllLabels();
+      instLeft.current.removeAllShapes(); 
+      
+      // Criar a Esfera apontadora no átomo
+      const atomsLeft = instLeft.current.selectedAtoms({resi: refResi, atom: "CA"});
+      if (atomsLeft && atomsLeft.length > 0) {
+        instLeft.current.addSphere({center: {x: atomsLeft[0].x, y: atomsLeft[0].y, z: atomsLeft[0].z}, radius: 2.5, color: "#4fc3f7", alpha: 0.6});
+      }
+
       instLeft.current.addLabel(`Humano: Posição ${refResi}`, 
         { backgroundColor: "#2c5364", fontColor: "white", backgroundOpacity: 0.9, showBackground: true }, 
         { resi: refResi }
@@ -75,9 +83,24 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
     if (instRight.current && activeCompSpecies && compSequences?.[activeCompSpecies]) {
       const offset = getOffset(refSequence, compSequences[activeCompSpecies]);
       const compResi = selectedGridIndex + offset + 1;
+      
+      // LOGICA BIOINFORMÁTICA DE COR
+      const refChar = refSequence[selectedGridIndex];
+      const compChar = compSequences[activeCompSpecies][selectedGridIndex + offset];
+      const isMutation = !refChar || refChar !== compChar;
+      const labelColor = isMutation ? "#ef4444" : "#64748b"; // Vermelho ou Cinza
+
       instRight.current.removeAllLabels();
+      instRight.current.removeAllShapes();
+
+      // Criar a Esfera apontadora (com a cor certa!)
+      const atomsRight = instRight.current.selectedAtoms({resi: compResi, atom: "CA"});
+      if (atomsRight && atomsRight.length > 0) {
+        instRight.current.addSphere({center: {x: atomsRight[0].x, y: atomsRight[0].y, z: atomsRight[0].z}, radius: 2.5, color: isMutation ? "red" : "gray", alpha: 0.6});
+      }
+
       instRight.current.addLabel(`${activeCompSpecies.replace(/_/g, ' ')}: Pos ${compResi}`, 
-        { backgroundColor: "#ef4444", fontColor: "white", backgroundOpacity: 0.9, showBackground: true }, 
+        { backgroundColor: labelColor, fontColor: "white", backgroundOpacity: 0.9, showBackground: true }, 
         { resi: compResi }
       );
       instRight.current.zoomTo({resi: compResi}, 800);

@@ -26,8 +26,7 @@ const SPECIES_DATABASE = [
   { id: 'delphinus_delphis', name: 'Delphinus delphis (Golfinho)' }
 ];
 
-export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResidueSelect }) {
-  const [searchTerm, setSearchTerm] = useState('TP53');
+export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResidueSelect, setActiveCompSpecies }) {  const [searchTerm, setSearchTerm] = useState('TP53');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const dropdownRef = useRef(null);
   
@@ -126,6 +125,7 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
   };
 
   const handleLoadWorkspace = async (ws) => {
+    if (onResidueSelect) onResidueSelect(null); // <-- PERDE O FOCO AQUI
     setSearchTerm(ws.gene);
     setRefSpecies(ws.ref_species);
     setCompSpeciesList(ws.comp_species);
@@ -419,6 +419,7 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
     }
     
     setIsSearching(true);
+    if (onResidueSelect) onResidueSelect(null);
     setErrorMsg('');
     setShowResults(false);
     setShowSuggestions(false); 
@@ -801,7 +802,16 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
 
             {/* A RÉGUA DE POSIÇÕES */}
                   <div className="flex my-3 items-center bg-[#15202b] py-1.5 rounded-sm border-y border-gray-700/50">
-                    <div className="w-64 shrink-0 pr-4 text-right bg-[#15202b] sticky left-0 z-10 border-r border-gray-700/30 mr-2">
+                    <div className="w-64 shrink-0 pr-4 bg-[#15202b] sticky left-0 z-10 border-r border-gray-700/30 mr-2 flex justify-between items-center pl-3">
+                      {selectedGridIndex !== null ? (
+                        <button
+                          onClick={() => onResidueSelect && onResidueSelect(null)}
+                          className="bg-red-900/40 hover:bg-red-600 text-red-300 hover:text-white px-2 py-0.5 rounded text-[10px] font-bold transition-colors cursor-pointer border border-red-800/50"
+                          title="Remover Foco"
+                        >
+                          Remover ✖
+                        </button>
+                      ) : <div/>}
                       <span className="text-gray-400 text-[10px] font-semibold uppercase tracking-wider block">Posição</span>
                     </div>
                     <div className="flex gap-[1px]">
@@ -977,10 +987,11 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
                                 return (
                                   <div key={`c-${trackIdx}-${index}`} className="relative group flex justify-center">
                                     <span 
-                                      onClick={() => onResidueSelect && onResidueSelect(index)}
+                                      onClick={() => {
+                                        if (onResidueSelect) onResidueSelect(index);
+                                        if (setActiveCompSpecies) setActiveCompSpecies(compData.species); // <-- A MAGIA DE SINCRONIZAÇÃO AQUI
+                                      }}
                                       className={`w-[14px] text-center inline-block rounded-sm transition-all cursor-pointer ${
-                                        isSelected ? 'ring-2 ring-yellow-400 scale-125 z-10' : ''
-                                      } ${
                                         isDiff 
                                           ? 'bg-red-500 text-white font-bold hover:bg-red-400 hover:shadow-[0_0_8px_rgba(239,68,68,0.6)]' 
                                           : 'text-gray-400 opacity-60 hover:text-white'

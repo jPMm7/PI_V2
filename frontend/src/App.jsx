@@ -17,8 +17,10 @@ function App() {
     compSpeciesList: ['felis_catus', 'pan_troglodytes']
   });
 
-  // NOVO: Estado que guarda o índice exato (0, 1, 2...) em que o utilizador clicou
   const [selectedGridIndex, setSelectedGridIndex] = useState(null);
+  
+  // NOVO: A espécie ativa no 3D agora é controlada centralmente aqui!
+  const [activeCompSpecies, setActiveCompSpecies] = useState('felis_catus');
 
   return (
     <div className="min-h-screen">
@@ -30,17 +32,19 @@ function App() {
         <Objectives />
         <Methodology />
         
-        {/* Passamos o estado e a função de atualizar para ambos os componentes! */}
         <ToolDemo 
           onAnalysisComplete={setAnalysisState} 
           selectedGridIndex={selectedGridIndex}
           onResidueSelect={setSelectedGridIndex}
+          setActiveCompSpecies={setActiveCompSpecies} // <-- Passamos o controlo para a grelha
         />
         
         <ProteinViewer 
           analysisState={analysisState} 
           selectedGridIndex={selectedGridIndex}
           onResidueSelect={setSelectedGridIndex}
+          activeCompSpecies={activeCompSpecies}       // <-- Passamos o estado para o 3D
+          setActiveCompSpecies={setActiveCompSpecies} // <-- Passamos o controlo para o 3D
         /> 
         
         <Team />
