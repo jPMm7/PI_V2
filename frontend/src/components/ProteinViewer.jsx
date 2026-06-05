@@ -26,6 +26,79 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
   const [proteinColor, setProteinColor] = useState('spectrum');
   const [isSpinning, setIsSpinning] = useState(false);
 
+  const [syncViews, setSyncViews] = useState(false);
+  const syncIntervalRef = useRef(null);
+
+  useEffect(() => {
+    if (!syncViews || !instLeft.current || !instRight.current) {
+      if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
+      return;
+    }
+
+    let lastLeftView = instLeft.current.getView();
+    let lastRightView = instRight.current.getView();
+
+    // Funções Matemáticas Avançadas para Rotação 3D (Quaternions)
+    const invertQuat = (q) => [-q[0], -q[1], -q[2], q[3]];
+    const multQuat = (a, b) => [
+      a[3]*b[0] + a[0]*b[3] + a[1]*b[2] - a[2]*b[1], // X
+      a[3]*b[1] - a[0]*b[2] + a[1]*b[3] + a[2]*b[0], // Y
+      a[3]*b[2] + a[0]*b[1] - a[1]*b[0] + a[2]*b[3], // Z
+      a[3]*b[3] - a[0]*b[0] - a[1]*b[1] - a[2]*b[2]  // W
+    ];
+
+    // O Motor que calcula as diferenças e as aplica
+    const applyRelativeView = (current, last, targetLast) => {
+      // 1. Delta de Translação (Arrastar/Pan)
+      const dx = current[0] - last[0];
+      const dy = current[1] - last[1];
+      const dz = current[2] - last[2];
+      
+      // 2. Delta de Zoom (Escala multiplicativa)
+      const zoomRatio = current[3] / (last[3] || 1);
+
+      // 3. Delta de Rotação (Quaternions)
+      const qCurrent = [current[4], current[5], current[6], current[7]];
+      const qLast = [last[4], last[5], last[6], last[7]];
+      const qTargetLast = [targetLast[4], targetLast[5], targetLast[6], targetLast[7]];
+      
+      const deltaQ = multQuat(qCurrent, invertQuat(qLast));
+      const newTargetQ = multQuat(deltaQ, qTargetLast);
+
+      return [
+        targetLast[0] + dx,
+        targetLast[1] + dy,
+        targetLast[2] + dz,
+        targetLast[3] * zoomRatio,
+        newTargetQ[0], newTargetQ[1], newTargetQ[2], newTargetQ[3]
+      ];
+    };
+
+    syncIntervalRef.current = setInterval(() => {
+      if (!instLeft.current || !instRight.current) return;
+      
+      const currentLeftView = instLeft.current.getView();
+      const currentRightView = instRight.current.getView();
+
+      const leftChanged = JSON.stringify(currentLeftView) !== JSON.stringify(lastLeftView);
+      const rightChanged = JSON.stringify(currentRightView) !== JSON.stringify(lastRightView);
+
+      if (leftChanged) {
+        const newRightView = applyRelativeView(currentLeftView, lastLeftView, lastRightView);
+        instRight.current.setView(newRightView);
+        lastLeftView = currentLeftView;
+        lastRightView = newRightView;
+      } else if (rightChanged) {
+        const newLeftView = applyRelativeView(currentRightView, lastRightView, lastLeftView);
+        instLeft.current.setView(newLeftView);
+        lastRightView = currentRightView;
+        lastLeftView = newLeftView;
+      }
+    }, 30); 
+
+    return () => clearInterval(syncIntervalRef.current);
+  }, [syncViews]);
+
   // NOVO: Ref para guardar a última versão das sequências para o evento de clique não se perder
   const latestDataRef = useRef({ refSequence, compSequences, activeCompSpecies, onResidueSelect });
   useEffect(() => {
@@ -352,6 +425,7 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
       <h2 className="text-[#1c2a39] text-[28px] font-bold mt-0 mb-2">Análise Estrutural Comparativa</h2>
       <p className="mb-6 text-gray-700">Compara fisicamente o impacto das variações peptídicas lado a lado.</p>
       
+      {/* BARRA DE FILTROS (MANTIDA IGUAL PARA NÃO PERDERES OPÇÕES) */}
       <div className="bg-[#eef3f8] p-6 rounded-lg border border-gray-200 mb-6 flex flex-col md:flex-row gap-6 items-end justify-between">
         <div className="flex-1 w-full flex items-center justify-center text-[#2c5364] font-bold text-lg bg-white border border-gray-300 rounded-md py-2 shadow-sm">
           🧬 Gene Ativo: {gene}
@@ -367,15 +441,59 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
         <div>
           <label className="block font-semibold text-[#1c2a39] mb-2 text-sm">Esquema de Cor</label>
           <select value={proteinColor} onChange={(e) => setProteinColor(e.target.value)} className="w-full bg-white border border-gray-300 py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-[#2c5364]">
-          <option value="spectrum">Arco-íris (Spectrum)</option>
-          <option value="mutations">Diferenças Mutacionais (Vermelho)</option> {/* <-- NOVA OPÇÃO */}
-          <option value="#00ff00">Verde Néon</option>
-          <option value="#ffffff">Branco Puro</option>
-        </select>
+            <option value="spectrum">Arco-íris (Spectrum)</option>
+            <option value="mutations">Diferenças Mutacionais (Vermelho)</option>
+            <option value="#00ff00">Verde Néon</option>
+            <option value="#ffffff">Branco Puro</option>
+          </select>
         </div>
-        <div className="w-full md:w-auto">
-          <button onClick={() => setIsSpinning(!isSpinning)} className={`w-full py-2 px-6 rounded-md font-semibold transition-colors ${isSpinning ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-[#2c5364] hover:bg-[#1c2a39] text-white'}`}>
-            {isSpinning ? 'Parar ⏹' : 'Animar ⟳'}
+      </div>
+
+      {/* NOVO: BARRA SLEEK ESCURA DE NAVEGAÇÃO 3D (FICA COLADA AOS QUADROS 3D) */}
+      <div className="bg-[#1c2a39] p-4 mb-4 flex flex-col md:flex-row gap-4 justify-between items-center rounded-lg border border-gray-700 shadow-md">
+        <h3 className="text-white font-bold m-0 flex items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4fc3f7" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+          Navegação Avançada
+        </h3>
+
+        <div className="flex flex-wrap gap-2 justify-center">
+          
+          {/* BOTÃO DE REMOVER FOCO (SÓ APARECE QUANDO CLICAS NA GRELHA) */}
+          {selectedGridIndex !== null && (
+            <button 
+              onClick={() => onResidueSelect && onResidueSelect(null)}
+              className="bg-red-900/40 hover:bg-red-600 text-red-300 hover:text-white px-3 py-1.5 rounded-md text-sm font-semibold transition-colors flex items-center gap-1.5 border border-red-800/50 shadow-sm animate-fade-in cursor-pointer"
+              title="Limpar seleção e afastar câmara"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              Remover Foco
+            </button>
+          )}
+
+          {/* BOTÃO DE SINCRONIZAR VISTAS */}
+          <button 
+            onClick={() => setSyncViews(!syncViews)}
+            className={`px-3 py-1.5 rounded-md text-sm font-semibold transition-all flex items-center gap-1.5 border cursor-pointer ${
+              syncViews 
+                ? 'bg-blue-600 text-white border-blue-500 shadow-[0_0_12px_rgba(37,99,235,0.5)]' 
+                : 'bg-gray-700 hover:bg-gray-600 text-gray-300 border-gray-600 shadow-sm'
+            }`}
+            title="Trancar as duas câmaras para se moverem em espelho"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+            {syncViews ? 'Vistas Trancadas 🔗' : 'Sincronizar Vistas'}
+          </button>
+
+          {/* BOTÃO DE AUTO-ROTAÇÃO */}
+          <button 
+            onClick={() => setIsSpinning(!isSpinning)}
+            className={`px-3 py-1.5 rounded-md text-sm font-semibold transition-colors flex items-center gap-1.5 border cursor-pointer ${
+              isSpinning ? 'bg-[#4fc3f7] text-[#1c2a39] border-[#4fc3f7]' : 'bg-gray-700 hover:bg-gray-600 text-gray-300 border-gray-600'
+            }`}
+            title="Ativar/Desativar auto-rotação"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M2.13 15.57a9 9 0 1 0 3.1-8.54L2 9M2.5 22v-6h6M21.87 8.43a9 9 0 1 0-3.1 8.54L22 15"></path></svg>
+            Auto-Rotação
           </button>
         </div>
       </div>
