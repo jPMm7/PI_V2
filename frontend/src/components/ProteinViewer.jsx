@@ -8,7 +8,7 @@ const HUMAN_FALLBACK = {
 
 
 
-export default function ProteinViewer({ analysisState, selectedGridIndex, onResidueSelect, activeCompSpecies, setActiveCompSpecies }) {
+export default function ProteinViewer({ analysisState, selectedGridIndex, onResidueSelect, activeCompSpecies, setActiveCompSpecies, compensatoryPairs, setCompensatoryPairs }) {
   const { gene, refSpecies, compSpeciesList, refSequence, compSequences } = analysisState;
 
 
@@ -36,8 +36,8 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
   // NOVO: Memória exata de qual animal está desenhado na janela neste exato milissegundo
   const loadedLeftRef = useRef(null);
   const loadedRightRef = useRef(null);
+  const lastFocusRef = useRef({ index: null, species: null });
 
-  const [compensatoryPairs, setCompensatoryPairs] = useState([]);
   const [outOfBoundsLeft, setOutOfBoundsLeft] = useState(false);
   const [outOfBoundsRight, setOutOfBoundsRight] = useState(false);
 
@@ -142,58 +142,65 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
   // NOVO: Efeito que dispara o Zoom e as Etiquetas 3D quando a Grelha muda!
   useEffect(() => {
     if (loadingLeft || loadingRight) return;
-    
-    // ---> MAGIA SUPREMA AQUI <---
-    // Só avança se a janela 3D já tiver MESMO o animal certo desenhado!
-    // Isto impede o bug de focar no gato quando a janela ainda tem o gorila.
     if (loadedLeftRef.current !== refSpecies || loadedRightRef.current !== activeCompSpecies) return;
-    if (zoomTimeoutRef.current) clearTimeout(zoomTimeoutRef.current); // <-- ADICIONA ESTA LINHA
-    isZoomingRef.current = true;
 
+    // A MAGIA SUPREMA: Verifica se o utilizador clicou numa coisa nova, ou se 
+    // foi apenas o motor de Linhas Amarelas a atualizar em background!
+    const needsCameraFlight = lastFocusRef.current.index !== selectedGridIndex || lastFocusRef.current.species !== activeCompSpecies;
+    lastFocusRef.current = { index: selectedGridIndex, species: activeCompSpecies };
+
+    if (needsCameraFlight) {
+      if (zoomTimeoutRef.current) clearTimeout(zoomTimeoutRef.current);
+      isZoomingRef.current = true;
+    }
+
+    // CENA 1: Limpeza / Remoção de Foco
     if (selectedGridIndex === null || selectedGridIndex === undefined) {
       instLeft.current?.removeAllLabels();
       instRight.current?.removeAllLabels();
       instLeft.current?.removeAllShapes();
       instRight.current?.removeAllShapes();
-      // ---> NOVO: REDESENHAR LINHAS COMPENSATÓRIAS <---
+      
+      // Mesmo sem foco, os tubos amarelos mantêm-se visíveis!
       if (instRight.current && compensatoryPairs.length > 0) {
         compensatoryPairs.forEach(pair => {
           instRight.current.addCylinder({ 
             start: {x: pair.a1.x, y: pair.a1.y, z: pair.a1.z}, 
             end: {x: pair.a2.x, y: pair.a2.y, z: pair.a2.z}, 
-            radius: 0.15, 
-            color: "yellow",
-            dashed: true // Fica um tubo amarelo fino e elegante a ligar as mutações!
+            radius: 0.15, color: "yellow", dashed: true 
           });
         });
       }
+      
       instLeft.current?.render();
       instRight.current?.render();
-      
       setOutOfBoundsLeft(false);
       setOutOfBoundsRight(false);
       
-      setTimeout(() => { isZoomingRef.current = false; }, 100);
+      // Respeita o timer longo para não bater com o zoom default do carregamento
+      if (needsCameraFlight) {
+        zoomTimeoutRef.current = setTimeout(() => { isZoomingRef.current = false; }, 1200);
+      }
       return;
     }
 
-    // Zoom no Humano (Esquerda)
+    // CENA 2: Zoom no Humano (Esquerda)
     if (instLeft.current && refSequence) {
       instLeft.current.removeAllLabels();
       instLeft.current.removeAllShapes(); 
-      
       let atomFoundLeft = false;
       
       if (selectedGridIndex >= 0 && selectedGridIndex < refSequence.length) {
         const refResi = selectedGridIndex + 1; // PDB usa índice base-1
         const atomsLeft = instLeft.current.selectedAtoms({resi: refResi, atom: "CA"});
         
-        // MAGIA: SÓ FAZ ZOOM SE O ÁTOMO EXISTIR REALMENTE NO 3D!
         if (atomsLeft && atomsLeft.length > 0) {
           atomFoundLeft = true;
           instLeft.current.addSphere({center: {x: atomsLeft[0].x, y: atomsLeft[0].y, z: atomsLeft[0].z}, radius: 2.5, color: "#4fc3f7", alpha: 0.6});
           instLeft.current.addLabel(`Humano: Posição ${refResi}`, { backgroundColor: "#2c5364", fontColor: "white", backgroundOpacity: 0.9, showBackground: true }, { resi: refResi });
-          instLeft.current.zoomTo({resi: refResi}, 800);
+          
+          // SÓ INICIA A VIAGEM DE CÂMARA SE FOR UM FOCO NOVO!
+          if (needsCameraFlight) instLeft.current.zoomTo({resi: refResi}, 800);
         }
       }
       
@@ -201,19 +208,18 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
       instLeft.current.render();
     }
 
-    // Zoom no Animal (Direita)
+    // CENA 3: Zoom no Animal (Direita)
     if (instRight.current && activeCompSpecies && compSequences?.[activeCompSpecies]) {
       instRight.current.removeAllLabels();
       instRight.current.removeAllShapes();
-      // ---> NOVO: REDESENHAR LINHAS COMPENSATÓRIAS <---
+
+      // Redesenha os tubos amarelos antes de focar na mutação
       if (instRight.current && compensatoryPairs.length > 0) {
         compensatoryPairs.forEach(pair => {
           instRight.current.addCylinder({ 
             start: {x: pair.a1.x, y: pair.a1.y, z: pair.a1.z}, 
             end: {x: pair.a2.x, y: pair.a2.y, z: pair.a2.z}, 
-            radius: 0.15, 
-            color: "yellow",
-            dashed: true // Fica um tubo amarelo fino e elegante a ligar as mutações!
+            radius: 0.15, color: "yellow", dashed: true 
           });
         });
       }
@@ -226,7 +232,6 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
         const compResi = compIndex + 1;
         const atomsRight = instRight.current.selectedAtoms({resi: compResi, atom: "CA"});
 
-        // MAGIA: SÓ FAZ ZOOM SE O ÁTOMO EXISTIR REALMENTE NO 3D!
         if (atomsRight && atomsRight.length > 0) {
           atomFoundRight = true;
           const refChar = refSequence[selectedGridIndex];
@@ -236,7 +241,9 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
 
           instRight.current.addSphere({center: {x: atomsRight[0].x, y: atomsRight[0].y, z: atomsRight[0].z}, radius: 2.5, color: isMutation ? "red" : "gray", alpha: 0.6});
           instRight.current.addLabel(`${activeCompSpecies.replace(/_/g, ' ')}: Pos ${compResi}`, { backgroundColor: labelColor, fontColor: "white", backgroundOpacity: 0.9, showBackground: true }, { resi: compResi });
-          instRight.current.zoomTo({resi: compResi}, 800);
+          
+          // SÓ INICIA A VIAGEM DE CÂMARA SE FOR UM FOCO NOVO!
+          if (needsCameraFlight) instRight.current.zoomTo({resi: compResi}, 800);
         }
       }
       
@@ -244,8 +251,10 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
       instRight.current.render();
     }
 
-  zoomTimeoutRef.current = setTimeout(() => { isZoomingRef.current = false; }, 1200);    
-  // Adiciona a variável compensatoryPairs ao fim da lista de dependências
+    if (needsCameraFlight) {
+      zoomTimeoutRef.current = setTimeout(() => { isZoomingRef.current = false; }, 1200);
+    }
+    
   }, [selectedGridIndex, activeCompSpecies, refSequence, compSequences, loadingLeft, loadingRight, refSpecies, compensatoryPairs]);
 
   // 1. INICIALIZAÇÃO DO MOTOR WEBGL (Este bloco tinha desaparecido!)
@@ -548,130 +557,103 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
   };
 
   return (
-    <section id="3d-viewer" className="bg-white p-8 mb-8 rounded-[10px] shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
-      <h2 className="text-[#1c2a39] text-[28px] font-bold mt-0 mb-2">Análise Estrutural Comparativa</h2>
-      <p className="mb-6 text-gray-700">Compara fisicamente o impacto das variações peptídicas lado a lado.</p>
+    <section id="3d-viewer" className="bg-white p-5 rounded-[10px] shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
       
-      {/* BARRA DE FILTROS (MANTIDA IGUAL PARA NÃO PERDERES OPÇÕES) */}
-      <div className="bg-[#eef3f8] p-6 rounded-lg border border-gray-200 mb-6 flex flex-col md:flex-row gap-6 items-end justify-between">
-        <div className="flex-1 w-full flex items-center justify-center text-[#2c5364] font-bold text-lg bg-white border border-gray-300 rounded-md py-2 shadow-sm">
-          🧬 Gene Ativo: {gene}
-        </div>
+      {/* CABEÇALHO COMPACTO DA SECÇÃO */}
+      <div className="mb-4 flex items-center justify-between">
         <div>
-          <label className="block font-semibold text-[#1c2a39] mb-2 text-sm">Estilo Visual</label>
-          <select value={proteinStyle} onChange={(e) => setProteinStyle(e.target.value)} className="w-full bg-white border border-gray-300 py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-[#2c5364]">
-            <option value="cartoon">Cartoon (Fitas)</option>
-            <option value="stick">Stick (Ligações)</option>
-            <option value="sphere">Sphere (Átomos 3D)</option>
-          </select>
-        </div>
-        <div>
-          <label className="block font-semibold text-[#1c2a39] mb-2 text-sm">Esquema de Cor</label>
-          <select value={proteinColor} onChange={(e) => setProteinColor(e.target.value)} className="w-full bg-white border border-gray-300 py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-[#2c5364]">
-            <option value="spectrum">Arco-íris (Spectrum)</option>
-            <option value="mutations">Diferenças Mutacionais (Vermelho)</option>
-            <option value="#00ff00">Verde Néon</option>
-            <option value="#ffffff">Branco Puro</option>
-          </select>
+          <h2 className="text-[#1c2a39] text-xl font-black uppercase tracking-tight m-0 flex items-center gap-2">
+            Análise Estrutural
+          </h2>
+          <p className="text-gray-500 text-[11px] mt-1 m-0 font-semibold uppercase tracking-wider">
+            Impacto espacial das variações peptídicas
+          </p>
         </div>
       </div>
 
-      {/* NOVO: BARRA SLEEK ESCURA DE NAVEGAÇÃO 3D (FICA COLADA AOS QUADROS 3D) */}
-      <div className="bg-[#1c2a39] p-4 mb-4 flex flex-col md:flex-row gap-4 justify-between items-center rounded-lg border border-gray-700 shadow-md">
-        <h3 className="text-white font-bold m-0 flex items-center gap-2">
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4fc3f7" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
-          Navegação Avançada
-        </h3>
+      {/* PAINEL DE CONTROLO / DISPLAY OPTIONS EMBELEZADO */}
+      <div className="bg-[#1c2a39] p-4 rounded-xl shadow-md mb-5 border border-gray-700">
+        <div className="flex justify-between items-center border-b border-gray-700 pb-3 mb-3">
+          <h3 className="text-white text-sm font-bold flex items-center gap-2 m-0">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4fc3f7" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            Display Options
+          </h3>
+          <span className="bg-[#2c5364] text-white px-3 py-1 rounded-md text-[10px] uppercase font-black border border-[#3a6b82] tracking-wider shadow-sm">
+            Gene: {gene}
+          </span>
+        </div>
+        
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <div>
+            <label className="text-gray-400 text-[10px] uppercase font-bold tracking-wider mb-1.5 block">Estilo Visual</label>
+            <select value={proteinStyle} onChange={(e) => setProteinStyle(e.target.value)} className="w-full bg-[#15202b] text-white border border-gray-600 rounded-md p-2 text-xs focus:border-blue-500 outline-none cursor-pointer">
+              <option value="cartoon">Cartoon (Fitas)</option>
+              <option value="stick">Stick (Ligações)</option>
+              <option value="sphere">Sphere (Átomos 3D)</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-gray-400 text-[10px] uppercase font-bold tracking-wider mb-1.5 block">Esquema de Cor</label>
+            <select value={proteinColor} onChange={(e) => setProteinColor(e.target.value)} className="w-full bg-[#15202b] text-white border border-gray-600 rounded-md p-2 text-xs focus:border-blue-500 outline-none cursor-pointer">
+              <option value="spectrum">Arco-íris (Padrão)</option>
+              <option value="mutations">Mutações (Vermelho)</option>
+              <option value="#00ff00">Verde Néon</option>
+              <option value="#ffffff">Branco Puro</option>
+            </select>
+          </div>
+        </div>
 
-        <div className="flex flex-wrap gap-2 justify-center">
-          
-          {/* BOTÃO DE REMOVER FOCO (SÓ APARECE QUANDO CLICAS NA GRELHA) */}
+        <div className="flex flex-wrap gap-2 pt-1 border-t border-gray-700/50 mt-2">
           {selectedGridIndex !== null && (
-            <button 
-              onClick={() => onResidueSelect && onResidueSelect(null)}
-              className="bg-red-900/40 hover:bg-red-600 text-red-300 hover:text-white px-3 py-1.5 rounded-md text-sm font-semibold transition-colors flex items-center gap-1.5 border border-red-800/50 shadow-sm animate-fade-in cursor-pointer"
-              title="Limpar seleção e afastar câmara"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            <button onClick={() => onResidueSelect && onResidueSelect(null)} className="flex-1 min-w-[90px] bg-red-900/40 hover:bg-red-600 text-red-300 hover:text-white py-1.5 rounded-md text-[11px] font-semibold transition-colors flex justify-center items-center gap-1.5 border border-red-800/50 cursor-pointer">
               Remover Foco
             </button>
           )}
-
-          {/* BOTÃO DE RESET AQUI! */}
           <button 
             onClick={() => {
               if (onResidueSelect) onResidueSelect(null); 
-              
               if (zoomTimeoutRef.current) clearTimeout(zoomTimeoutRef.current);
-              isZoomingRef.current = true; // PAUSA A SINCRONIZAÇÃO
-              
+              isZoomingRef.current = true;
               if (instLeft.current) { instLeft.current.zoomTo(); instLeft.current.render(); }
               if (instRight.current) { instRight.current.zoomTo(); instRight.current.render(); }
-              
-              // Guarda o temporizador para podermos cancelá-lo se tocares no ecrã!
               zoomTimeoutRef.current = setTimeout(() => { isZoomingRef.current = false; }, 1500);
-            }}
-            className="bg-gray-700 hover:bg-gray-600 text-gray-300 px-3 py-1.5 rounded-md text-sm font-semibold transition-colors flex items-center gap-1.5 border border-gray-600 shadow-sm cursor-pointer"
-            title="Restaurar posição e zoom iniciais"
+            }} 
+            className="flex-1 min-w-[70px] bg-gray-700 hover:bg-gray-600 text-gray-300 py-1.5 rounded-md text-[11px] font-semibold transition-colors flex justify-center items-center gap-1.5 border border-gray-600 cursor-pointer"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="22" y1="12" x2="18" y2="12"></line><line x1="6" y1="12" x2="2" y2="12"></line><line x1="12" y1="6" x2="12" y2="2"></line><line x1="12" y1="22" x2="12" y2="18"></line></svg>
             Centrar
           </button>
-          
-
-          {/* BOTÃO DE SINCRONIZAR VISTAS */}
-          <button 
-            onClick={() => setSyncViews(!syncViews)}
-            className={`px-3 py-1.5 rounded-md text-sm font-semibold transition-all flex items-center gap-1.5 border cursor-pointer ${
-              syncViews 
-                ? 'bg-blue-600 text-white border-blue-500 shadow-[0_0_12px_rgba(37,99,235,0.5)]' 
-                : 'bg-gray-700 hover:bg-gray-600 text-gray-300 border-gray-600 shadow-sm'
-            }`}
-            title="Trancar as duas câmaras para se moverem em espelho"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
-            {syncViews ? 'Vistas Trancadas 🔗' : 'Sincronizar Vistas'}
+          <button onClick={() => setSyncViews(!syncViews)} className={`flex-1 min-w-[110px] py-1.5 rounded-md text-[11px] font-semibold transition-all flex justify-center items-center gap-1.5 border cursor-pointer ${syncViews ? 'bg-blue-600 text-white border-blue-500 shadow-[0_0_10px_rgba(37,99,235,0.4)]' : 'bg-gray-700 hover:bg-gray-600 text-gray-300 border-gray-600'}`}>
+            {syncViews ? 'Vistas Trancadas 🔗' : 'Sincronizar'}
           </button>
-
-          {/* BOTÃO DE AUTO-ROTAÇÃO */}
-          <button 
-            onClick={() => setIsSpinning(!isSpinning)}
-            className={`px-3 py-1.5 rounded-md text-sm font-semibold transition-colors flex items-center gap-1.5 border cursor-pointer ${
-              isSpinning ? 'bg-[#4fc3f7] text-[#1c2a39] border-[#4fc3f7]' : 'bg-gray-700 hover:bg-gray-600 text-gray-300 border-gray-600'
-            }`}
-            title="Ativar/Desativar auto-rotação"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M2.13 15.57a9 9 0 1 0 3.1-8.54L2 9M2.5 22v-6h6M21.87 8.43a9 9 0 1 0-3.1 8.54L22 15"></path></svg>
+          <button onClick={() => setIsSpinning(!isSpinning)} className={`flex-1 min-w-[90px] py-1.5 rounded-md text-[11px] font-semibold transition-colors flex justify-center items-center gap-1.5 border cursor-pointer ${isSpinning ? 'bg-[#4fc3f7] text-[#1c2a39] border-[#4fc3f7]' : 'bg-gray-700 hover:bg-gray-600 text-gray-300 border-gray-600'}`}>
             Auto-Rotação
           </button>
         </div>
       </div>
 
-      {/* A MAGIA: O onPointerDownCapture deteta quando tentas rodar a proteína e reativa a sincronização na hora! */}
+      {/* A MAGIA DO MOBILE: Em ecrãs normais (md) ficam Lado a Lado (grid-cols-2). 
+          Em Desktop (xl) empilham novamente (grid-cols-1) porque a coluna já é fina! */}
       <div 
-        className="grid grid-cols-1 lg:grid-cols-2 gap-6"
+        className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-1 gap-6"
         onPointerDownCapture={() => {
           isZoomingRef.current = false;
           if (zoomTimeoutRef.current) clearTimeout(zoomTimeoutRef.current);
         }}
       >
         
-        {/* REFERÊNCIA HUMANA (ESQUERDA) */}
+        {/* REFERÊNCIA HUMANA (3D MODEL 1) */}
         <div className="flex flex-col gap-2">
-          <div className="bg-[#1c2a39] text-white px-4 py-2 rounded-t-lg font-bold flex justify-between items-center border-b-4 border-blue-500">
-            <span>{refSpecies ? refSpecies.replace(/_/g, ' ').toUpperCase() : 'REFERÊNCIA'}</span>
-            <span className="text-[10px] bg-gray-800 px-2 py-1 rounded text-blue-300">{labelLeft || 'A PROCESSAR'}</span>
+          <div className="bg-[#1c2a39] text-white px-3 py-2 rounded-t-lg font-bold flex justify-between items-center border-b-4 border-blue-500">
+            <span className="text-xs tracking-wide">{refSpecies ? refSpecies.replace(/_/g, ' ').toUpperCase() : 'REFERÊNCIA'}</span>
+            <span className="text-[9px] bg-gray-800 px-2 py-1 rounded text-blue-300 ml-auto border border-blue-900/50">{labelLeft || 'A PROCESSAR'}</span>
           </div>
-          <div className="relative w-full h-[400px] rounded-b-lg overflow-hidden border-2 border-gray-200">
-            
-            {/* OVERLAY ESQUERDO (HUMANO) -> Variável outOfBoundsLeft */}
+          {/* Altura equilibrada para caberem os dois no ecrã sem precisares de fazer scroll na direita */}
+          <div className="relative w-full h-[320px] 2xl:h-[380px] rounded-b-lg overflow-hidden border-2 border-gray-200 shadow-sm">
             {outOfBoundsLeft && (
               <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-gray-900/80 border border-gray-600 text-gray-300 px-4 py-2 rounded-lg font-mono text-xs z-20 shadow-lg backdrop-blur-sm flex items-center gap-2 animate-fade-in pointer-events-none">
-                <span className="text-yellow-500">⚠️</span>
-                N/A (Posição sem estrutura 3D)
+                <span className="text-yellow-500">⚠️</span>N/A (S/ estrutura 3D)
               </div>
             )}
-            
             {loadingLeft && (
               <div className="absolute inset-0 bg-[#1c2a39] flex flex-col items-center justify-center text-white z-10">
                 <div className="animate-spin text-blue-500 text-3xl mb-2">⚙</div>
@@ -682,11 +664,9 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
           </div>
         </div>
 
-        {/* ECRÃ DINÂMICO MULTI-ESPÉCIE (DIREITA) */}
+        {/* ECRÃ DINÂMICO MULTI-ESPÉCIE (3D MODEL 2) */}
         <div className="flex flex-col gap-2">
-          
-          {/* 1. O Cabeçalho (Dropdown e Label) */}
-          <div className="bg-[#1c2a39] text-white px-4 py-[5px] rounded-t-lg font-bold flex justify-between items-center border-b-4 border-green-500">
+          <div className="bg-[#1c2a39] text-white px-3 py-[5px] rounded-t-lg font-bold flex flex-wrap gap-2 justify-between items-center border-b-4 border-green-500">
             <select 
               value={activeCompSpecies} 
               onChange={(e) => {
@@ -694,7 +674,7 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
                 if (onResidueSelect) onResidueSelect(null); 
                 if (instLeft.current) { instLeft.current.zoomTo(); instLeft.current.render(); }
               }}
-              className="bg-[#2c5364] text-white text-sm font-bold border-none outline-none cursor-pointer py-1 px-2 rounded hover:bg-[#3a6b82] transition-colors uppercase"
+              className="bg-[#2c5364] text-white text-xs font-bold border-none outline-none cursor-pointer py-1.5 px-2 rounded hover:bg-[#3a6b82] transition-colors uppercase max-w-[200px] truncate"
             >
               {compSpeciesList && compSpeciesList.map(speciesId => (
                 <option key={`3d-comp-${speciesId}`} value={speciesId}>
@@ -702,23 +682,18 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
                 </option>
               ))}
             </select>
-            <span className="text-[10px] bg-gray-800 px-2 py-1 rounded text-green-300">{labelRight || 'A PROCESSAR'}</span>
+            <span className="text-[9px] bg-gray-800 px-2 py-1 rounded text-green-300 ml-auto border border-green-900/50">{labelRight || 'A PROCESSAR'}</span>
           </div>
-          
-          {/* 2. A Janela 3D (Mantém-se igual) */}
-          <div className="relative w-full h-[400px] rounded-b-lg overflow-hidden border-2 border-gray-200 shadow-sm">
-            
+          <div className="relative w-full h-[320px] 2xl:h-[380px] rounded-b-lg overflow-hidden border-2 border-gray-200 shadow-sm">
             {outOfBoundsRight && (
               <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-gray-900/80 border border-gray-600 text-gray-300 px-4 py-2 rounded-lg font-mono text-xs z-20 shadow-lg backdrop-blur-sm flex items-center gap-2 animate-fade-in pointer-events-none">
-                <span className="text-yellow-500">⚠️</span>
-                N/A (Posição sem estrutura 3D)
+                <span className="text-yellow-500">⚠️</span>N/A (S/ estrutura 3D)
               </div>
             )}
-            
             {labelRight === "MANUAL_UPLOAD" ? (
               <div className="absolute inset-0 bg-[#1c2a39] flex flex-col items-center justify-center text-white z-10 p-6 text-center">
                 <span className="text-sm font-mono mb-2 text-yellow-400">⚠️ Estrutura 3D não encontrada na IA.</span>
-                <span className="text-xs text-gray-400 mb-4">Se este é um ficheiro local que carregaste (FASTA) ou uma proteína desconhecida, faz o upload do ficheiro .pdb correspondente.</span>
+                <span className="text-xs text-gray-400 mb-4">Faz o upload manual do ficheiro .pdb correspondente.</span>
                 <label className="bg-[#2c5364] hover:bg-[#3a6b82] text-white px-5 py-2 rounded cursor-pointer font-bold text-xs transition-colors shadow-lg border border-[#48829c]">
                   Upload Ficheiro .PDB
                   <input type="file" accept=".pdb" className="hidden" onChange={(e) => handleManualUpload(e, instRight.current, setLabelRight)} />
@@ -732,32 +707,6 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
             )}
             <div ref={viewerRightRef} className="w-full h-full bg-[#1c2a39]"></div>
           </div>
-
-          {/* 3. O NOVO PAINEL DE MUTAÇÕES COMPENSATÓRIAS (FORA DA JANELA 3D!) */}
-          {compensatoryPairs && compensatoryPairs.length > 0 && !loadingRight && (
-            <div className="bg-[#15202b] border border-yellow-500/40 p-4 rounded-lg shadow-sm animate-fade-in mt-2 w-full">
-              <h4 className="text-yellow-400 font-bold text-sm flex items-center gap-2 mb-3 tracking-wide uppercase">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>
-                Interações Compensatórias Detetadas ({compensatoryPairs.length})
-              </h4>
-              
-              <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto custom-scrollbar">
-                {compensatoryPairs.map((pair, idx) => (
-                  <div key={idx} className="bg-[#1c2a39] border border-gray-700/80 rounded px-3 py-2 flex gap-3 items-center text-xs font-mono hover:border-yellow-500/50 transition-colors cursor-crosshair shadow-sm" title={`Possível compensação estrutural a ${pair.dist} Angstroms`}>
-                    <span className="text-gray-300">
-                      Pos <span className="text-white font-bold">{pair.resi1}</span>
-                      <span className="text-gray-500 mx-2">↔</span>
-                      Pos <span className="text-white font-bold">{pair.resi2}</span>
-                    </span>
-                    <span className="text-yellow-300 bg-yellow-900/40 px-2 py-0.5 rounded font-bold border border-yellow-800/40">
-                      {pair.dist}Å
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
         </div>
 
       </div>
