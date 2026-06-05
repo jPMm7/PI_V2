@@ -74,7 +74,7 @@ function App() {
                 
                 {/* CABEÇALHO FIXO DO PAINEL */}
                 <div className="p-4 border-b border-gray-700/50 relative z-10 shrink-0 bg-[#1c2a39]">
-                  <h3 className="text-yellow-400 text-base font-bold mb-1 flex items-center gap-2 m-0">
+                  <h3 className="text-yellow-400 text-base font-bold mb-1 flex items-center gap-8 m-0">
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>
                     Interações Compensatórias ({compensatoryPairs.length})
                   </h3>
@@ -85,7 +85,7 @@ function App() {
 
                 {/* ÁREA COM SCROLL INTERNO PARA AS MUTAÇÕES */}
                 <div className="p-4 overflow-y-auto custom-scrollbar relative z-10 h-full">
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-1">
                     {compensatoryPairs.map((pair, idx) => (
                       <div key={idx} className="bg-[#15202b] border border-gray-700/80 rounded-lg p-2.5 flex flex-col items-center justify-center gap-2 hover:border-yellow-500/60 hover:shadow-[0_0_10px_rgba(234,179,8,0.15)] transition-all cursor-crosshair group" title={`Distância exata: ${pair.dist} Angstroms`}>
                         <div className="flex items-center gap-2 text-white font-mono text-[11px] sm:text-xs">
