@@ -470,6 +470,21 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
             </button>
           )}
 
+          {/* BOTÃO DE RESET */}
+          <button 
+            onClick={() => {
+              if (onResidueSelect) onResidueSelect(null); // Limpa as miras se houver
+              if (instLeft.current) { instLeft.current.zoomTo(); instLeft.current.render(); }
+              if (instRight.current) { instRight.current.zoomTo(); instRight.current.render(); }
+            }}
+            className="bg-gray-700 hover:bg-gray-600 text-gray-300 px-3 py-1.5 rounded-md text-sm font-semibold transition-colors flex items-center gap-1.5 border border-gray-600 shadow-sm cursor-pointer"
+            title="Restaurar posição e zoom iniciais"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="22" y1="12" x2="18" y2="12"></line><line x1="6" y1="12" x2="2" y2="12"></line><line x1="12" y1="6" x2="12" y2="2"></line><line x1="12" y1="22" x2="12" y2="18"></line></svg>
+            Centrar
+          </button>
+          
+
           {/* BOTÃO DE SINCRONIZAR VISTAS */}
           <button 
             onClick={() => setSyncViews(!syncViews)}
