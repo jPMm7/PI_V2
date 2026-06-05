@@ -37,6 +37,7 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
   const loadedLeftRef = useRef(null);
   const loadedRightRef = useRef(null);
 
+  const [compensatoryPairs, setCompensatoryPairs] = useState([]);
   const [outOfBoundsLeft, setOutOfBoundsLeft] = useState(false);
   const [outOfBoundsRight, setOutOfBoundsRight] = useState(false);
 
@@ -154,6 +155,18 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
       instRight.current?.removeAllLabels();
       instLeft.current?.removeAllShapes();
       instRight.current?.removeAllShapes();
+      // ---> NOVO: REDESENHAR LINHAS COMPENSATÓRIAS <---
+      if (instRight.current && compensatoryPairs.length > 0) {
+        compensatoryPairs.forEach(pair => {
+          instRight.current.addCylinder({ 
+            start: {x: pair.a1.x, y: pair.a1.y, z: pair.a1.z}, 
+            end: {x: pair.a2.x, y: pair.a2.y, z: pair.a2.z}, 
+            radius: 0.15, 
+            color: "yellow",
+            dashed: true // Fica um tubo amarelo fino e elegante a ligar as mutações!
+          });
+        });
+      }
       instLeft.current?.render();
       instRight.current?.render();
       
@@ -192,6 +205,18 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
     if (instRight.current && activeCompSpecies && compSequences?.[activeCompSpecies]) {
       instRight.current.removeAllLabels();
       instRight.current.removeAllShapes();
+      // ---> NOVO: REDESENHAR LINHAS COMPENSATÓRIAS <---
+      if (instRight.current && compensatoryPairs.length > 0) {
+        compensatoryPairs.forEach(pair => {
+          instRight.current.addCylinder({ 
+            start: {x: pair.a1.x, y: pair.a1.y, z: pair.a1.z}, 
+            end: {x: pair.a2.x, y: pair.a2.y, z: pair.a2.z}, 
+            radius: 0.15, 
+            color: "yellow",
+            dashed: true // Fica um tubo amarelo fino e elegante a ligar as mutações!
+          });
+        });
+      }
 
       let atomFoundRight = false;
       const offset = getOffset(refSequence, compSequences[activeCompSpecies]);
@@ -220,8 +245,8 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
     }
 
   zoomTimeoutRef.current = setTimeout(() => { isZoomingRef.current = false; }, 1200);    
-  // ---> ATENÇÃO: Adiciona o `refSpecies` ao fim desta linha! <---
-  }, [selectedGridIndex, activeCompSpecies, refSequence, compSequences, loadingLeft, loadingRight, refSpecies]);
+  // Adiciona a variável compensatoryPairs ao fim da lista de dependências
+  }, [selectedGridIndex, activeCompSpecies, refSequence, compSequences, loadingLeft, loadingRight, refSpecies, compensatoryPairs]);
 
   // 1. INICIALIZAÇÃO DO MOTOR WEBGL (Este bloco tinha desaparecido!)
   useEffect(() => {
@@ -327,6 +352,56 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [compSpeciesList]);
 
+  // NOVO MOTOR: Deteção de Mutações Compensatórias (Distância Euclidiana 3D)
+  const detectCompensatory = (viewer, activeSpeciesId) => {
+    if (!viewer || !refSequence || !compSequences?.[activeSpeciesId]) {
+      setCompensatoryPairs([]);
+      return;
+    }
+    
+    const compSeq = compSequences[activeSpeciesId];
+    const offset = getOffset(refSequence, compSeq);
+    const mutatedPositions = [];
+
+    // 1. Encontra todas as posições mutadas neste animal
+    for (let i = 0; i < refSequence.length; i++) {
+      const compIdx = i + offset;
+      if (compIdx >= 0 && compIdx < compSeq.length) {
+        if (refSequence[i] !== compSeq[compIdx]) {
+          mutatedPositions.push(compIdx + 1); // PDB usa índice 1-based
+        }
+      }
+    }
+
+    // 2. Extrai as coordenadas 3D exatas do Carbono Alfa (CA) dessas mutações
+    const mutatedAtoms = [];
+    mutatedPositions.forEach(resi => {
+      const atoms = viewer.selectedAtoms({ resi: resi, atom: "CA" });
+      if (atoms && atoms.length > 0) mutatedAtoms.push({ resi, atom: atoms[0] });
+    });
+
+    // 3. Calcula as distâncias entre todos os pares possíveis!
+    const pairs = [];
+    for(let i = 0; i < mutatedAtoms.length; i++) {
+      for(let j = i + 1; j < mutatedAtoms.length; j++) {
+        const a1 = mutatedAtoms[i].atom;
+        const a2 = mutatedAtoms[j].atom;
+        
+        // Distância Euclidiana 3D
+        const dist = Math.sqrt(Math.pow(a1.x - a2.x, 2) + Math.pow(a1.y - a2.y, 2) + Math.pow(a1.z - a2.z, 2));
+        
+        // Limiar de 5 Angstroms (Proximidade de interação forte)
+        // Nota: Como estamos a medir entre Carbonos Alfa (CA), 5Å a 7Å é o ideal para compensação de cadeias laterais.
+        if (dist <= 6.5) { 
+          // (Ajustei o limiar para 6.5Å para apanhar interações de cadeias laterais longas, podes mudar para 5.0 se quiseres ser estrito)
+          pairs.push({ resi1: mutatedAtoms[i].resi, resi2: mutatedAtoms[j].resi, dist: dist.toFixed(1), a1, a2 });
+        }
+      }
+    }
+    
+    setCompensatoryPairs(pairs); // Guarda no estado para a UI desenhar!
+  };
+
   const loadStructure = async (targetGene, targetSpeciesId, viewer, setLabel, setLoading, isLeft) => {
     if (!viewer) return;
     setLoading(true);
@@ -428,10 +503,13 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
       // Se não houver fallback ou também falhar, mostra o botão clássico
       setLabel("MANUAL_UPLOAD");
     } finally {
-      // ---> NOVO: Regista oficialmente que este animal terminou de ser pintado no ecrã!
-      if (isLeft) loadedLeftRef.current = targetSpeciesId;
-      else loadedRightRef.current = targetSpeciesId;
-      
+      if (isLeft) {
+        loadedLeftRef.current = targetSpeciesId;
+      } else {
+        loadedRightRef.current = targetSpeciesId;
+        // ---> NOVO: Analisa as mutações compensatórias 0.5 segundos depois de renderizar!
+        setTimeout(() => detectCompensatory(viewer, targetSpeciesId), 500);
+      }
       setLoading(false);
     }
   };
@@ -606,12 +684,13 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
 
         {/* ECRÃ DINÂMICO MULTI-ESPÉCIE (DIREITA) */}
         <div className="flex flex-col gap-2">
+          
+          {/* 1. O Cabeçalho (Dropdown e Label) */}
           <div className="bg-[#1c2a39] text-white px-4 py-[5px] rounded-t-lg font-bold flex justify-between items-center border-b-4 border-green-500">
             <select 
               value={activeCompSpecies} 
               onChange={(e) => {
                 setActiveCompSpecies(e.target.value);
-                // Reset automático quando mudamos de animal
                 if (onResidueSelect) onResidueSelect(null); 
                 if (instLeft.current) { instLeft.current.zoomTo(); instLeft.current.render(); }
               }}
@@ -625,9 +704,10 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
             </select>
             <span className="text-[10px] bg-gray-800 px-2 py-1 rounded text-green-300">{labelRight || 'A PROCESSAR'}</span>
           </div>
-          <div className="relative w-full h-[400px] rounded-b-lg overflow-hidden border-2 border-gray-200">
+          
+          {/* 2. A Janela 3D (Mantém-se igual) */}
+          <div className="relative w-full h-[400px] rounded-b-lg overflow-hidden border-2 border-gray-200 shadow-sm">
             
-            {/* OVERLAY DIREITO (ANIMAL) -> Variável outOfBoundsRight */}
             {outOfBoundsRight && (
               <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-gray-900/80 border border-gray-600 text-gray-300 px-4 py-2 rounded-lg font-mono text-xs z-20 shadow-lg backdrop-blur-sm flex items-center gap-2 animate-fade-in pointer-events-none">
                 <span className="text-yellow-500">⚠️</span>
@@ -652,6 +732,32 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
             )}
             <div ref={viewerRightRef} className="w-full h-full bg-[#1c2a39]"></div>
           </div>
+
+          {/* 3. O NOVO PAINEL DE MUTAÇÕES COMPENSATÓRIAS (FORA DA JANELA 3D!) */}
+          {compensatoryPairs && compensatoryPairs.length > 0 && !loadingRight && (
+            <div className="bg-[#15202b] border border-yellow-500/40 p-4 rounded-lg shadow-sm animate-fade-in mt-2 w-full">
+              <h4 className="text-yellow-400 font-bold text-sm flex items-center gap-2 mb-3 tracking-wide uppercase">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>
+                Interações Compensatórias Detetadas ({compensatoryPairs.length})
+              </h4>
+              
+              <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto custom-scrollbar">
+                {compensatoryPairs.map((pair, idx) => (
+                  <div key={idx} className="bg-[#1c2a39] border border-gray-700/80 rounded px-3 py-2 flex gap-3 items-center text-xs font-mono hover:border-yellow-500/50 transition-colors cursor-crosshair shadow-sm" title={`Possível compensação estrutural a ${pair.dist} Angstroms`}>
+                    <span className="text-gray-300">
+                      Pos <span className="text-white font-bold">{pair.resi1}</span>
+                      <span className="text-gray-500 mx-2">↔</span>
+                      Pos <span className="text-white font-bold">{pair.resi2}</span>
+                    </span>
+                    <span className="text-yellow-300 bg-yellow-900/40 px-2 py-0.5 rounded font-bold border border-yellow-800/40">
+                      {pair.dist}Å
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
         </div>
 
       </div>
