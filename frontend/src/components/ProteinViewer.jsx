@@ -219,7 +219,7 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
       instRight.current.render();
     }
 
-  zoomTimeoutRef.current = setTimeout(() => { isZoomingRef.current = false; }, 850);    
+  zoomTimeoutRef.current = setTimeout(() => { isZoomingRef.current = false; }, 1200);    
   // ---> ATENÇÃO: Adiciona o `refSpecies` ao fim desta linha! <---
   }, [selectedGridIndex, activeCompSpecies, refSequence, compSequences, loadingLeft, loadingRight, refSpecies]);
 
@@ -531,7 +531,7 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
               if (instRight.current) { instRight.current.zoomTo(); instRight.current.render(); }
               
               // Guarda o temporizador para podermos cancelá-lo se tocares no ecrã!
-              zoomTimeoutRef.current = setTimeout(() => { isZoomingRef.current = false; }, 1050);
+              zoomTimeoutRef.current = setTimeout(() => { isZoomingRef.current = false; }, 1500);
             }}
             className="bg-gray-700 hover:bg-gray-600 text-gray-300 px-3 py-1.5 rounded-md text-sm font-semibold transition-colors flex items-center gap-1.5 border border-gray-600 shadow-sm cursor-pointer"
             title="Restaurar posição e zoom iniciais"
