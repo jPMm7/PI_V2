@@ -11,12 +11,14 @@ import Methodology from './components/Methodology';
 import ProteinViewer from './components/ProteinViewer';
 
 function App() {
-  // O ESTADO PARTILHADO AGORA SUPORTA MÚLTIPLAS ESPÉCIES!
   const [analysisState, setAnalysisState] = useState({
     gene: 'TP53',
     refSpecies: 'homo_sapiens',
-    compSpeciesList: ['felis_catus', 'pan_troglodytes'] // <-- Agora é um Array!
+    compSpeciesList: ['felis_catus', 'pan_troglodytes']
   });
+
+  // NOVO: Estado que guarda o índice exato (0, 1, 2...) em que o utilizador clicou
+  const [selectedGridIndex, setSelectedGridIndex] = useState(null);
 
   return (
     <div className="min-h-screen">
@@ -28,8 +30,18 @@ function App() {
         <Objectives />
         <Methodology />
         
-        <ToolDemo onAnalysisComplete={setAnalysisState} />
-        <ProteinViewer analysisState={analysisState} /> 
+        {/* Passamos o estado e a função de atualizar para ambos os componentes! */}
+        <ToolDemo 
+          onAnalysisComplete={setAnalysisState} 
+          selectedGridIndex={selectedGridIndex}
+          onResidueSelect={setSelectedGridIndex}
+        />
+        
+        <ProteinViewer 
+          analysisState={analysisState} 
+          selectedGridIndex={selectedGridIndex}
+          onResidueSelect={setSelectedGridIndex}
+        /> 
         
         <Team />
         <Contact />

@@ -26,7 +26,7 @@ const SPECIES_DATABASE = [
   { id: 'delphinus_delphis', name: 'Delphinus delphis (Golfinho)' }
 ];
 
-export default function ToolDemo({ onAnalysisComplete }) {
+export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResidueSelect }) {
   const [searchTerm, setSearchTerm] = useState('TP53');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const dropdownRef = useRef(null);
@@ -52,6 +52,8 @@ export default function ToolDemo({ onAnalysisComplete }) {
 
   const fileInputRef = useRef(null);
 
+  const resultsRef = useRef(null); // Vai servir de âncora para o scroll automático
+
   // NOVO: Autenticação e Estados de Gravação
   const { user } = useAuth();
   const [isSaving, setIsSaving] = useState(false);
@@ -68,6 +70,14 @@ export default function ToolDemo({ onAnalysisComplete }) {
 
   const [editingWsId, setEditingWsId] = useState(null);
   const [editingWsName, setEditingWsName] = useState('');
+
+  const [editingTrackId, setEditingTrackId] = useState(null);
+  const [editingTrackName, setEditingTrackName] = useState('');
+
+  const handleRenameTrack = (speciesId) => {
+    setCompDataListState(prev => prev.map(item => item.species === speciesId ? { ...item, displayName: editingTrackName } : item));
+    setEditingTrackId(null);
+  };
 
   // Função para ir buscar as análises do utilizador à base de dados
   const fetchWorkspaces = async () => {
@@ -116,49 +126,59 @@ export default function ToolDemo({ onAnalysisComplete }) {
   };
 
   const handleLoadWorkspace = async (ws) => {
-    // 1. Atualiza as caixas de texto e fecha a janela
     setSearchTerm(ws.gene);
     setRefSpecies(ws.ref_species);
     setCompSpeciesList(ws.comp_species);
     setShowWorkspacesModal(false);
     
-    // 2. Prepara a UI para o carregamento automático
-    setIsSearching(true);
-    setErrorMsg('');
-    setShowResults(false);
-    setSaveMsg('');
-
-    try {
-      const targetGene = ws.gene.toUpperCase();
-      
-      // 3. Extrai tudo diretamente usando os dados do Workspace guardado!
-      const [refData, ...compDataArray] = await Promise.all([
-        fetchEnsemblData(ws.ref_species, targetGene),
-        ...ws.comp_species.map(species => fetchEnsemblData(species, targetGene))
-      ]);
-
-      if (refData.error) throw new Error(`Referência Falhou: ${refData.error}`);
-
-      // 4. Atualiza os estados finais da tabela
-      setRefDataState(refData);
-      setCompDataListState(compDataArray);
+    // MAGIA: Se o save já tiver os dados guardados na Cloud (versão nova)
+    if (ws.comp_data && ws.ref_data) {
+      setRefDataState(ws.ref_data);
+      setCompDataListState(ws.comp_data);
       setShowResults(true);
 
       if (onAnalysisComplete) {
         onAnalysisComplete({
-          gene: targetGene,
+          gene: ws.gene,
           refSpecies: ws.ref_species,
           compSpeciesList: ws.comp_species,
-          refSequence: refData.sequence,
-          compSequences: compDataArray.reduce((acc, item) => {
+          refSequence: ws.ref_data.sequence,
+          compSequences: ws.comp_data.reduce((acc, item) => {
             if (item && !item.error) acc[item.species] = item.sequence;
             return acc;
           }, {})
         });
       }
       
-      // Feedback visual de sucesso
-      setSaveMsg(`Análise "${ws.name}" carregada e alinhada com sucesso!`);
+      setSaveMsg(`Análise "${ws.name}" carregada instantaneamente da Cloud! ⚡`);
+      setTimeout(() => setSaveMsg(''), 4000);
+
+      // NOVO: FORÇAR O SCROLL IMEDIATAMENTE A SEGUIR AO CARREGAMENTO INSTANTÂNEO <---
+      setTimeout(() => {
+        if (resultsRef.current) {
+          resultsRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 150);
+
+      return; // Sai da função, não precisa de ir à API do Ensembl!
+    }
+
+    // Se for um save antigo, faz à maneira antiga (com loading)...
+    setIsSearching(true);
+    setErrorMsg('');
+    setShowResults(false);
+    try {
+      const targetGene = ws.gene.toUpperCase();
+      const [refData, ...compDataArray] = await Promise.all([
+        fetchEnsemblData(ws.ref_species, targetGene),
+        ...ws.comp_species.map(species => fetchEnsemblData(species, targetGene))
+      ]);
+      if (refData.error) throw new Error(`Referência Falhou: ${refData.error}`);
+      setRefDataState(refData);
+      setCompDataListState(compDataArray);
+      setShowResults(true);
+      if (onAnalysisComplete) { /* ... notifica pai ... */ }
+      setSaveMsg(`Análise carregada!`);
       setTimeout(() => setSaveMsg(''), 4000);
     } catch (error) {
       setErrorMsg(error.message);
@@ -182,7 +202,6 @@ export default function ToolDemo({ onAnalysisComplete }) {
     try {
       const defaultName = `Análise de ${searchTerm.toUpperCase()}`;
 
-      // O segredo está no .select().single() no final!
       const { data, error } = await supabase
         .from('saved_workspaces')
         .insert([
@@ -191,7 +210,9 @@ export default function ToolDemo({ onAnalysisComplete }) {
             name: defaultName,
             gene: searchTerm.toUpperCase(),
             ref_species: refSpecies,
-            comp_species: compSpeciesList
+            comp_species: compSpeciesList,
+            ref_data: refDataState,       // Guarda as sequências ativas!
+            comp_data: compDataListState  // Guarda os FASTAs locais e tudo o resto!
           }
         ])
         .select()
@@ -199,18 +220,10 @@ export default function ToolDemo({ onAnalysisComplete }) {
 
       if (error) throw error;
       
-      // Limpa qualquer temporizador antigo
       if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
-      
       setSaveMsg('Análise guardada! Podes alterar o nome abaixo:');
-      setSavedWorkspaceContext({ id: data.id, name: data.name }); // Guarda os dados para a Toast
-
-      // Começa a contar 6 segundos. Se não fizerem nada, a Toast desaparece.
-      toastTimeoutRef.current = setTimeout(() => {
-        setSaveMsg('');
-        setSavedWorkspaceContext(null);
-      }, 6000);
-
+      setSavedWorkspaceContext({ id: data.id, name: data.name });
+      toastTimeoutRef.current = setTimeout(() => { setSaveMsg(''); setSavedWorkspaceContext(null); }, 6000);
     } catch (err) {
       setErrorMsg("Erro ao guardar: " + err.message);
     } finally {
@@ -261,6 +274,36 @@ export default function ToolDemo({ onAnalysisComplete }) {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) setShowSuggestions(false);
+      if (multiSelectRef.current && !multiSelectRef.current.contains(event.target)) setShowMultiSelect(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  
+  useEffect(() => {
+    if (showResults && resultsRef.current) {
+      // O setTimeout dá 150 milissegundos para o React construir o HTML antes de tentarmos deslizar
+      setTimeout(() => {
+        resultsRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 150);
+    }
+  }, [showResults]);
+
+  // Faz scroll horizontal na grelha se o utilizador clicar numa proteína 3D
+  useEffect(() => {
+    if (selectedGridIndex !== null && showResults) {
+      const rulerEl = document.getElementById(`ruler-${selectedGridIndex}`);
+      if (rulerEl) {
+        rulerEl.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+      }
+    }
+  }, [selectedGridIndex, showResults]);
+  
 
   const filteredGenes = GENE_DATABASE.filter(gene => gene.toLowerCase().includes(searchTerm.toLowerCase()));
 
@@ -519,7 +562,8 @@ export default function ToolDemo({ onAnalysisComplete }) {
         actualGeneSymbol: 'FASTA',
         rawFastaText: text,
         loading: false,
-        error: null
+        error: null,
+        displayName: header // <-- NOVO CAMPO: Nome que aparece no ecrã
       };
 
       const updatedList = [...compSpeciesList, customSpeciesId];
@@ -706,7 +750,7 @@ export default function ToolDemo({ onAnalysisComplete }) {
 
       
       {showResults && refDataState && (
-        <div className="mt-8 animate-fade-in">
+        <div ref={resultsRef} className="mt-8 animate-fade-in scroll-mt-24">
           
           <div className="bg-[#1c2a39] text-gray-300 p-5 rounded-b-lg font-mono text-sm overflow-x-auto mb-6">
             
@@ -741,8 +785,13 @@ export default function ToolDemo({ onAnalysisComplete }) {
                     <div className="flex gap-[1px]">
                       {gridIndices.map((index) => {
                         const char = refDataState.sequence[index];
+                        const isSelected = selectedGridIndex === index;
                         return (
-                          <span key={`h-${index}`} className={`w-[14px] text-center inline-block font-bold ${!char ? 'text-gray-500 opacity-30' : ''}`}>
+                          <span 
+                            key={`h-${index}`} 
+                            onClick={() => onResidueSelect && onResidueSelect(index)}
+                            className={`w-[14px] text-center inline-block font-bold cursor-pointer transition-colors ${isSelected ? 'bg-yellow-400 text-black rounded-sm shadow-md' : (!char ? 'text-gray-500 opacity-30' : '')}`}
+                          >
                             {char || '-'}
                           </span>
                         );
@@ -759,8 +808,15 @@ export default function ToolDemo({ onAnalysisComplete }) {
                       {gridIndices.map((index) => {
                         const pos = index + 1;
                         const isDecade = pos % 10 === 0;
+                        const isSelected = selectedGridIndex === index;
                         return (
-                          <span key={`ruler-${index}`} className={`w-[14px] text-center inline-block ${isDecade ? 'text-[9.5px] text-white font-bold' : 'text-[7.5px] text-gray-500'}`} style={{ overflow: 'visible' }}>
+                          <span 
+                            key={`ruler-${index}`} 
+                            id={`ruler-${index}`}
+                            onClick={() => onResidueSelect && onResidueSelect(index)}
+                            className={`w-[14px] text-center inline-block cursor-pointer transition-all ${isSelected ? 'bg-yellow-400 text-black font-bold rounded-sm scale-125 z-20 shadow-md' : (isDecade ? 'text-[9.5px] text-white font-bold' : 'text-[7.5px] text-gray-500')}`} 
+                            style={{ overflow: 'visible' }}
+                          >
                             {isDecade ? pos : (pos % 10)}
                           </span>
                         );
@@ -781,14 +837,45 @@ export default function ToolDemo({ onAnalysisComplete }) {
                   >
                     
                     {/* COLUNA ESQUERDA FIXA COM OS BOTÕES DE LIXO E EDIÇÃO */}
-                    <div className="w-64 shrink-0 pr-4 bg-[#1c2a39] sticky left-0 z-10 flex flex-col justify-center border-r border-gray-700/50 mr-2">
-                      <span className="text-green-400 font-bold block truncate" title={compData.species.replace(/_/g, ' ')}>
-                        {compData.species.replace(/_/g, ' ').toUpperCase()}
-                      </span>
+                    <div className="w-64 shrink-0 pr-4 bg-[#1c2a39] sticky left-0 z-10 flex flex-col justify-center border-r border-gray-700/50 mr-2 group/track">
+                      
+                      {/* NOME EDITÁVEL PARA UPLOADS LOCAIS */}
+                      {editingTrackId === compData.species ? (
+                        <div className="flex gap-1 items-center mb-1">
+                          <input 
+                            autoFocus
+                            type="text" 
+                            value={editingTrackName} 
+                            onChange={(e) => setEditingTrackName(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleRenameTrack(compData.species)}
+                            className="bg-[#15202b] text-white px-1.5 py-0.5 text-[11px] rounded w-full border border-blue-500 outline-none"
+                          />
+                          <button onClick={() => handleRenameTrack(compData.species)} className="text-green-400 hover:text-green-300">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1">
+                          <span className="text-green-400 font-bold block truncate" title={compData.displayName || compData.species.replace(/_/g, ' ')}>
+                            {(compData.displayName || compData.species.replace(/_/g, ' ')).toUpperCase()}
+                          </span>
+                          
+                          {/* Só mostra o lápis se for um upload (FASTA local) */}
+                          {compData.species.startsWith('UPLOAD_') && (
+                            <button 
+                              onClick={() => { setEditingTrackId(compData.species); setEditingTrackName(compData.displayName || 'Sequência Local'); }}
+                              className="text-gray-500 hover:text-blue-400 opacity-0 group-hover/track:opacity-100 transition-opacity cursor-pointer ml-1"
+                              title="Renomear Upload"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                            </button>
+                          )}
+                        </div>
+                      )}
                       
                       {/* NOVO: Mostrar o Nome Oficial do Gene e o ID no Animal */}
                       {hasData && (
-                        <span className="text-gray-500 text-[10px] block truncate mb-0.5">
+                        <span className="text-gray-500 text-[10px] block truncate mb-0.5 mt-0.5">
                           Gene: <strong className="text-green-200">{compData.actualGeneSymbol}</strong> | ID: {compData.id}
                         </span>
                       )}
@@ -883,21 +970,20 @@ export default function ToolDemo({ onAnalysisComplete }) {
                                   );
                                 }
 
-                                // Nova Lógica: Se o humano não tiver letra nesta posição, é sempre uma diferença (inserção)
                                 const isDiff = !refChar || compChar !== refChar;
-                                
-                                // Gerar a notação HGVS (ex: V50G)
+                                const isSelected = selectedGridIndex === index;
                                 const mutationLabel = isDiff ? `${refChar || '-'}${index + 1}${compChar}` : "";
 
                                 return (
                                   <div key={`c-${trackIdx}-${index}`} className="relative group flex justify-center">
-                                    
-                                    {/* A Letra em si (repara que retirámos o title= nativo) */}
                                     <span 
-                                      className={`w-[14px] text-center inline-block rounded-sm transition-colors ${
+                                      onClick={() => onResidueSelect && onResidueSelect(index)}
+                                      className={`w-[14px] text-center inline-block rounded-sm transition-all cursor-pointer ${
+                                        isSelected ? 'ring-2 ring-yellow-400 scale-125 z-10' : ''
+                                      } ${
                                         isDiff 
-                                          ? 'bg-red-500 text-white font-bold cursor-pointer hover:bg-red-400 hover:shadow-[0_0_8px_rgba(239,68,68,0.6)]' 
-                                          : 'text-gray-400 opacity-60'
+                                          ? 'bg-red-500 text-white font-bold hover:bg-red-400 hover:shadow-[0_0_8px_rgba(239,68,68,0.6)]' 
+                                          : 'text-gray-400 opacity-60 hover:text-white'
                                       }`}
                                     >
                                       {compChar}
@@ -977,38 +1063,27 @@ export default function ToolDemo({ onAnalysisComplete }) {
           </div>
         </div>
       )}
-            {/* NOVO: JANELA DINÂMICA (MODAL) DO RELATÓRIO DE MUTAÇÕES */}
       {mutationModal.isOpen && (
         <div className="fixed inset-0 bg-[#000000bb] z-50 flex justify-center items-center backdrop-blur-md p-4 animate-fade-in">
-          {/* Mudança para rounded-2xl e overflow-hidden para arredondamento perfeito */}
           <div className="bg-[#1c2a39] border border-gray-600 rounded-2xl shadow-[0_0_40px_rgba(0,0,0,0.5)] max-w-2xl w-full max-h-[80vh] flex flex-col overflow-hidden">
-            
-            {/* Cabeçalho do Modal (um pouco mais espaçoso) */}
             <div className="p-5 border-b border-gray-700 flex justify-between items-center bg-[#15202b]">
               <h3 className="text-white text-lg font-bold m-0 flex items-center gap-2">
                 🧬 Perfil Mutacional: <span className="text-green-400">{mutationModal.species.replace(/_/g, ' ').toUpperCase()}</span>
               </h3>
-              <button 
-                onClick={() => setMutationModal({ isOpen: false, species: '', mutations: [] })} 
-                className="text-gray-400 hover:text-white transition-colors cursor-pointer"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              <button onClick={() => setMutationModal({ isOpen: false, species: '', mutations: [] })} className="text-gray-400 hover:text-white transition-colors cursor-pointer">
+                <svg xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
               </button>
             </div>
             
-            {/* Corpo com a grelha de mutações */}
             <div className="p-6 overflow-y-auto">
               <p className="text-gray-300 mb-6 text-sm">
-                Foram detetadas <strong>{mutationModal.mutations.length}</strong> divergências peptídicas em relação à referência humana <span className="italic">({refSpecies.replace(/_/g, ' ')})</span>. Abaixo encontra-se o mapeamento na notação HGVS (Original ➔ Posição ➔ Mutado).
+                Foram detetadas <strong>{mutationModal.mutations.length}</strong> divergências peptídicas em relação à referência humana <span className="italic">({refSpecies.replace(/_/g, ' ')})</span>. Abaixo encontra-se o mapeamento na notação HGVS.
               </p>
               
               {mutationModal.mutations.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
                   {mutationModal.mutations.map((mut, idx) => (
-                    <span 
-                      key={idx} 
-                      className="bg-red-900/30 text-red-300 border border-red-800/50 px-2.5 py-1.5 rounded text-sm font-mono shadow-sm hover:bg-red-900/50 transition-colors cursor-default"
-                    >
+                    <span key={idx} className="bg-red-900/30 text-red-300 border border-red-800/50 px-2.5 py-1.5 rounded text-sm font-mono shadow-sm hover:bg-red-900/50 transition-colors cursor-default">
                       {mut}
                     </span>
                   ))}
@@ -1020,67 +1095,134 @@ export default function ToolDemo({ onAnalysisComplete }) {
               )}
             </div>
             
-            {/* Rodapé do Modal */}
             <div className="p-4 border-t border-gray-700 flex justify-end">
-              <button 
-                onClick={() => setMutationModal({ isOpen: false, species: '', mutations: [] })} 
-                className="bg-gray-700 hover:bg-gray-600 text-white px-6 py-2 rounded transition-colors text-sm font-semibold cursor-pointer"
-              >
+              <button onClick={() => setMutationModal({ isOpen: false, species: '', mutations: [] })} className="bg-gray-700 hover:bg-gray-600 text-white px-6 py-2 rounded transition-colors text-sm font-semibold cursor-pointer">
                 Fechar Relatório
               </button>
             </div>
-            
           </div>
         </div>
       )}
       
-      {/* NOVO: JANELA DINÂMICA (MODAL) DE CARREGAR WORKSPACES */}
+      
       {showWorkspacesModal && (
         <div className="fixed inset-0 bg-[#000000bb] z-[100] flex justify-center items-center backdrop-blur-md p-4 animate-fade-in">
-          {/* ... (mantém o código do teu modal igualzinho aqui dentro) ... */}
-          {/* Para não colar o ficheiro todo, deixa ficar o teu modal de carregar aqui */}
+          <div className="bg-[#1c2a39] border border-gray-600 rounded-2xl shadow-[0_0_40px_rgba(0,0,0,0.5)] max-w-2xl w-full max-h-[80vh] flex flex-col overflow-hidden">
+            
+            <div className="p-5 border-b border-gray-700 flex justify-between items-center bg-[#15202b]">
+              <h3 className="text-white text-lg font-bold m-0 flex items-center gap-2">
+                <svg xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-blue-400"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                As Minhas Análises Guardadas
+              </h3>
+              <button onClick={() => setShowWorkspacesModal(false)} className="text-gray-400 hover:text-white transition-colors cursor-pointer">
+                <svg xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto bg-[#1c2a39] min-h-[200px]">
+              {isLoadingWorkspaces ? (
+                <div className="flex flex-col items-center justify-center py-12 text-blue-400">
+                  <svg className="animate-spin h-10 w-10 mb-4" xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <span className="text-sm font-semibold animate-pulse">A procurar análises na cloud...</span>
+                </div>
+              ) : savedWorkspacesList.length === 0 ? (
+                <div className="text-center text-gray-500 italic py-8 border border-dashed border-gray-700 rounded-lg">
+                  Ainda não tens nenhuma análise guardada. Alinha algumas espécies e clica em Guardar!
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {savedWorkspacesList.map((ws) => (
+                    <div key={ws.id} className="bg-[#15202b] p-4 rounded-lg border border-gray-700 flex justify-between items-center hover:border-blue-500/50 transition-colors group">
+                      
+                      
+                      <div className="flex-1 mr-4">
+                        {editingWsId === ws.id ? (
+                          <div className="flex gap-2 items-center mb-2">
+                            <input 
+                              type="text" 
+                              value={editingWsName} 
+                              onChange={(e) => setEditingWsName(e.target.value)} 
+                              className="bg-[#1c2a39] border border-blue-500 text-white px-2 py-1 rounded text-sm w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              autoFocus
+                              onKeyDown={(e) => e.key === 'Enter' && handleRenameWorkspace(ws.id)}
+                            />
+                            <button onClick={() => handleRenameWorkspace(ws.id)} className="text-green-400 hover:text-green-300 cursor-pointer" title="Guardar Nome">
+                              <svg xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                            </button>
+                            <button onClick={() => setEditingWsId(null)} className="text-red-400 hover:text-red-300 cursor-pointer" title="Cancelar">
+                              <svg xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 mb-1 text-white group-hover:text-blue-300 transition-colors">
+                            <div className="font-bold text-[15px]">{ws.name}</div>
+                            <button onClick={() => { setEditingWsId(ws.id); setEditingWsName(ws.name); }} className="text-gray-500 hover:text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer" title="Renomear Análise">
+                              <svg xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                            </button>
+                          </div>
+                        )}
+                        
+                        
+                        <div className="text-xs text-gray-400 flex flex-wrap gap-2">
+                          <span>Gene: <span className="text-blue-300 font-semibold">{ws.gene}</span></span><span className="text-gray-600">|</span>
+                          <span>Ref: <span className="text-gray-300">{ws.ref_species.replace(/_/g, ' ')}</span></span><span className="text-gray-600">|</span>
+                          <span>Animais: <span className="text-green-300">{ws.comp_species.length}</span></span>
+                        </div>
+                        <div className="text-[10px] text-gray-500 mt-2">
+                          Guardado a: {new Date(ws.created_at).toLocaleString('pt-PT')}
+                        </div>
+                      </div>
+                      
+                      
+                      <div className="flex gap-2 items-center shrink-0">
+                        <button onClick={() => handleLoadWorkspace(ws)} className="bg-[#2c5364] hover:bg-[#3a6b82] text-white px-4 py-2 rounded-md transition-colors text-sm font-semibold cursor-pointer shadow-lg">
+                          Abrir
+                        </button>
+                        <button onClick={() => handleDeleteWorkspace(ws.id)} className="bg-red-900/20 hover:bg-red-600 text-red-400 hover:text-white px-2.5 py-2 rounded-md transition-all border border-red-800/30 hover:border-red-500 cursor-pointer shadow-lg" title="Apagar Análise">
+                          <svg xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
-      </section> {/* <--- 1. FECHA A SECTION DA FERRAMENTA AQUI! */}
+      </section> 
 
-
-      {/* 2. AS TOASTS FICAM FORA DA SECTION, DENTRO DESTA DIV FIXA! */}
+      
       <div className="fixed bottom-6 right-6 z-[200] flex flex-col gap-3 pointer-events-none">
         
-        {/* Toast de Sucesso (Verde) com Edição Inteligente */}
+        
         {saveMsg && (
           <div className="pointer-events-auto bg-[#1c2a39] border border-gray-700 border-l-4 border-l-green-500 text-white p-4 rounded-lg shadow-[0_10px_30px_rgba(0,0,0,0.5)] flex items-start gap-3 animate-fade-in w-[340px]">
             <div className="bg-green-500/10 p-1.5 rounded-full text-green-400 shrink-0 mt-0.5">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <svg xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
             </div>
             
             <div className="flex-1 w-full">
               <div className="flex justify-between items-center mb-1">
                 <p className="font-bold text-sm text-gray-100 m-0">Sucesso</p>
-                <button 
-                  onClick={() => {
-                    setSaveMsg('');
-                    setSavedWorkspaceContext(null);
-                    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
-                  }} 
-                  className="text-gray-500 hover:text-white transition-colors cursor-pointer"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                <button onClick={() => { setSaveMsg(''); setSavedWorkspaceContext(null); if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current); }} className="text-gray-500 hover:text-white transition-colors cursor-pointer">
+                  <svg xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                 </button>
               </div>
               <p className="text-xs text-gray-400 m-0 leading-relaxed">{saveMsg}</p>
 
-              {/* INPUT APARECE AQUI SE HOUVER CONTEXTO GRAVADO */}
+              
               {savedWorkspaceContext && (
                 <div className="mt-3 flex gap-2">
                   <input
                     type="text"
                     value={savedWorkspaceContext.name}
                     onChange={(e) => setSavedWorkspaceContext({...savedWorkspaceContext, name: e.target.value})}
-                    onFocus={() => {
-                      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
-                    }}
+                    onFocus={() => { if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current); }}
                     onKeyDown={async (e) => {
                       if (e.key === 'Enter') {
                         await supabase.from('saved_workspaces').update({ name: savedWorkspaceContext.name }).eq('id', savedWorkspaceContext.id);
@@ -1100,9 +1242,8 @@ export default function ToolDemo({ onAnalysisComplete }) {
                       toastTimeoutRef.current = setTimeout(() => setSaveMsg(''), 3000);
                     }}
                     className="bg-green-700 hover:bg-green-600 text-white px-2.5 rounded cursor-pointer transition-colors shadow-sm"
-                    title="Confirmar Nome"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    <svg xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
                   </button>
                 </div>
               )}
@@ -1110,24 +1251,23 @@ export default function ToolDemo({ onAnalysisComplete }) {
           </div>
         )}
 
-        {/* Toast de Erro/Aviso (Vermelho) */}
+        
         {errorMsg && (
           <div className="pointer-events-auto bg-[#1c2a39] border border-gray-700 border-l-4 border-l-red-500 text-white p-4 rounded-lg shadow-[0_10px_30px_rgba(0,0,0,0.5)] flex items-start gap-3 animate-fade-in w-[320px]">
             <div className="bg-red-500/10 p-1.5 rounded-full text-red-400 shrink-0 mt-0.5">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+              <svg xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
             </div>
             <div className="flex-1">
               <p className="font-bold text-sm text-gray-100 m-0">Aviso</p>
               <p className="text-xs text-gray-400 m-0 mt-1 leading-relaxed">{errorMsg}</p>
             </div>
             <button onClick={() => setErrorMsg('')} className="text-gray-500 hover:text-white transition-colors shrink-0 cursor-pointer">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              <svg xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
             </button>
           </div>
         )}
-
       </div>
 
-    </> /* <--- 3. FECHA O FRAGMENTO AQUI NO FIM DE TUDO! */
+    </> /* FECHA A TAG QUE ABRIMOS NO INÍCIO DO RETURN */
   );
 }

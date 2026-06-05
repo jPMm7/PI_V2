@@ -8,7 +8,7 @@ const HUMAN_FALLBACK = {
 
 
 
-export default function ProteinViewer({ analysisState }) {
+export default function ProteinViewer({ analysisState, selectedGridIndex, onResidueSelect }) {
   const { gene, refSpecies, compSpeciesList, refSequence, compSequences } = analysisState;
 
   // Estado que controla qual dos animais da lista está ativamente visível no 3D da direita
@@ -27,6 +27,63 @@ export default function ProteinViewer({ analysisState }) {
   const [proteinStyle, setProteinStyle] = useState('cartoon');
   const [proteinColor, setProteinColor] = useState('spectrum');
   const [isSpinning, setIsSpinning] = useState(false);
+
+  // NOVO: Ref para guardar a última versão das sequências para o evento de clique não se perder
+  const latestDataRef = useRef({ refSequence, compSequences, activeCompSpecies, onResidueSelect });
+  useEffect(() => {
+    latestDataRef.current = { refSequence, compSequences, activeCompSpecies, onResidueSelect };
+  }, [refSequence, compSequences, activeCompSpecies, onResidueSelect]);
+
+  // NOVO: Função para descobrir qual a verdadeira posição 3D do animal em relação à grelha
+  const getOffset = (refSeq, compSeq) => {
+    if (!refSeq || !compSeq) return 0;
+    let maxMatches = 0; let bestOffset = 0;
+    const range = Math.max(refSeq.length, compSeq.length);
+    for (let offset = -range; offset <= range; offset++) {
+      let matches = 0;
+      for (let i = 0; i < refSeq.length; i++) {
+        if (refSeq[i] === compSeq[i + offset]) matches++;
+      }
+      if (matches > maxMatches) { maxMatches = matches; bestOffset = offset; }
+    }
+    return bestOffset;
+  };
+
+  // NOVO: Efeito que dispara o Zoom e as Etiquetas 3D quando a Grelha muda!
+  useEffect(() => {
+    if (selectedGridIndex === null || selectedGridIndex === undefined) {
+      instLeft.current?.removeAllLabels();
+      instRight.current?.removeAllLabels();
+      instLeft.current?.render();
+      instRight.current?.render();
+      return;
+    }
+
+    // Zoom no Humano (Esquerda)
+    if (instLeft.current) {
+      const refResi = selectedGridIndex + 1; // PDB usa índice base-1
+      instLeft.current.removeAllLabels();
+      instLeft.current.addLabel(`Humano: Posição ${refResi}`, 
+        { backgroundColor: "#2c5364", fontColor: "white", backgroundOpacity: 0.9, showBackground: true }, 
+        { resi: refResi }
+      );
+      instLeft.current.zoomTo({resi: refResi}, 800); // 800ms de animação suave
+      instLeft.current.render();
+    }
+
+    // Zoom no Animal (Direita)
+    if (instRight.current && activeCompSpecies && compSequences?.[activeCompSpecies]) {
+      const offset = getOffset(refSequence, compSequences[activeCompSpecies]);
+      const compResi = selectedGridIndex + offset + 1;
+      instRight.current.removeAllLabels();
+      instRight.current.addLabel(`${activeCompSpecies.replace(/_/g, ' ')}: Pos ${compResi}`, 
+        { backgroundColor: "#ef4444", fontColor: "white", backgroundOpacity: 0.9, showBackground: true }, 
+        { resi: compResi }
+      );
+      instRight.current.zoomTo({resi: compResi}, 800);
+      instRight.current.render();
+    }
+  }, [selectedGridIndex, activeCompSpecies, refSequence, compSequences]);
 
 
   // 1. INICIALIZAÇÃO DO MOTOR WEBGL (Este bloco tinha desaparecido!)
@@ -169,6 +226,21 @@ export default function ProteinViewer({ analysisState }) {
 
       viewer.clear();
       viewer.addModel(pdbText, "pdb", { keepH: false });
+
+      // ATIVADOR DE CLIQUES NO 3D
+      viewer.setClickable({}, true, function(atom) {
+        if (!atom || !atom.resi) return;
+        const { refSequence, compSequences, activeCompSpecies, onResidueSelect } = latestDataRef.current;
+        if (!onResidueSelect) return;
+
+        if (isLeft) {
+          onResidueSelect(atom.resi - 1);
+        } else {
+          if (!refSequence || !compSequences?.[activeCompSpecies]) return;
+          const offset = getOffset(refSequence, compSequences[activeCompSpecies]);
+          onResidueSelect(atom.resi - 1 - offset); // Converte a posição 3D de volta para a posição da Grelha
+        }
+      });
       
       applyStyles(viewer, isLeft); 
       viewer.zoomTo();
@@ -188,6 +260,22 @@ export default function ProteinViewer({ analysisState }) {
             const pdbText = await pdbRes.text();
             viewer.clear();
             viewer.addModel(pdbText, "pdb", { keepH: false });
+
+                  // ATIVADOR DE CLIQUES NO 3D
+            viewer.setClickable({}, true, function(atom) {
+              if (!atom || !atom.resi) return;
+              const { refSequence, compSequences, activeCompSpecies, onResidueSelect } = latestDataRef.current;
+              if (!onResidueSelect) return;
+
+              if (isLeft) {
+                onResidueSelect(atom.resi - 1);
+              } else {
+                if (!refSequence || !compSequences?.[activeCompSpecies]) return;
+                const offset = getOffset(refSequence, compSequences[activeCompSpecies]);
+                onResidueSelect(atom.resi - 1 - offset); // Converte a posição 3D de volta para a posição da Grelha
+              }
+            });
+
             applyStyles(viewer, isLeft);
             viewer.zoomTo();
             setLabel(`RCSB PDB: ${pdbId}`); // Indica na UI que é uma estrutura real e não IA
