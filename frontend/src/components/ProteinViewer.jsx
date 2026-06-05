@@ -31,6 +31,8 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
 
   const isZoomingRef = useRef(false); // Sinal para pausar a sincronização durante as viagens
 
+  const zoomTimeoutRef = useRef(null); // Guarda o temporizador para o podermos cancelar a meio!
+
   // NOVO: Memória exata de qual animal está desenhado na janela neste exato milissegundo
   const loadedLeftRef = useRef(null);
   const loadedRightRef = useRef(null);
@@ -144,7 +146,7 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
     // Só avança se a janela 3D já tiver MESMO o animal certo desenhado!
     // Isto impede o bug de focar no gato quando a janela ainda tem o gorila.
     if (loadedLeftRef.current !== refSpecies || loadedRightRef.current !== activeCompSpecies) return;
-
+    if (zoomTimeoutRef.current) clearTimeout(zoomTimeoutRef.current); // <-- ADICIONA ESTA LINHA
     isZoomingRef.current = true;
 
     if (selectedGridIndex === null || selectedGridIndex === undefined) {
@@ -217,8 +219,7 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
       instRight.current.render();
     }
 
-    setTimeout(() => { isZoomingRef.current = false; }, 850);
-    
+  zoomTimeoutRef.current = setTimeout(() => { isZoomingRef.current = false; }, 850);    
   // ---> ATENÇÃO: Adiciona o `refSpecies` ao fim desta linha! <---
   }, [selectedGridIndex, activeCompSpecies, refSequence, compSequences, loadingLeft, loadingRight, refSpecies]);
 
@@ -522,13 +523,15 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
           <button 
             onClick={() => {
               if (onResidueSelect) onResidueSelect(null); 
+              
+              if (zoomTimeoutRef.current) clearTimeout(zoomTimeoutRef.current);
               isZoomingRef.current = true; // PAUSA A SINCRONIZAÇÃO
               
               if (instLeft.current) { instLeft.current.zoomTo(); instLeft.current.render(); }
               if (instRight.current) { instRight.current.zoomTo(); instRight.current.render(); }
               
-              // O zoom default do 3Dmol dura cerca de 1 segundo, reativa depois!
-              setTimeout(() => { isZoomingRef.current = false; }, 1050);
+              // Guarda o temporizador para podermos cancelá-lo se tocares no ecrã!
+              zoomTimeoutRef.current = setTimeout(() => { isZoomingRef.current = false; }, 1050);
             }}
             className="bg-gray-700 hover:bg-gray-600 text-gray-300 px-3 py-1.5 rounded-md text-sm font-semibold transition-colors flex items-center gap-1.5 border border-gray-600 shadow-sm cursor-pointer"
             title="Restaurar posição e zoom iniciais"
@@ -566,7 +569,14 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* A MAGIA: O onPointerDownCapture deteta quando tentas rodar a proteína e reativa a sincronização na hora! */}
+      <div 
+        className="grid grid-cols-1 lg:grid-cols-2 gap-6"
+        onPointerDownCapture={() => {
+          isZoomingRef.current = false;
+          if (zoomTimeoutRef.current) clearTimeout(zoomTimeoutRef.current);
+        }}
+      >
         
         {/* REFERÊNCIA HUMANA (ESQUERDA) */}
         <div className="flex flex-col gap-2">
