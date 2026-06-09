@@ -29,7 +29,7 @@ export default function ProteinViewer({
   const [labelRight, setLabelRight] = useState('');
 
   const [proteinStyle, setProteinStyle] = useState('cartoon');
-  const [proteinColor, setProteinColor] = useState('spectrum');
+  const [proteinColor, setProteinColor] = useState('mutations');
   const [isSpinning, setIsSpinning] = useState(false);
 
   const [syncViews, setSyncViews] = useState(false);
@@ -611,11 +611,93 @@ export default function ProteinViewer({
         </div>
       </div>
 
-      {/* PAINEL DE CONTROLO / DISPLAY OPTIONS (Mantém-se igual) */}
-      <div className="bg-[#1c2a39] p-4 rounded-xl shadow-md mb-5 border border-gray-700 shrink-0">
-         {/* ... (TODO O TEU CÓDIGO DOS BOTÕES E SELECTS FICA AQUI INTACTO) ... */}
-         {/* Mantém tudo o que tinhas no Painel de Controlo! */}
-         {/* Copia o teu código original das Display Options para aqui se precisares */}
+      {/* PAINEL DE CONTROLO / DISPLAY OPTIONS */}
+      <div className="bg-[#1c2a39] p-4 rounded-xl shadow-md mb-4 border border-gray-700 shrink-0">
+        {/* Retirámos o justify-between e deixámos o flexbox fluido */}
+        <div className="flex flex-wrap items-center gap-4">
+          
+          {/* GRUPO ESQUERDO: BOTÕES DE AÇÃO E CÂMARA */}
+          {/* O mr-auto AQUI é a magia! Empurra o resto para a direita apenas se estiverem na mesma linha */}
+          <div className="flex flex-wrap items-center gap-2 mr-auto">
+            
+            {(selectedGridIndex !== null || focusedPair !== null) && (
+              <button 
+                onClick={() => {
+                  if (onResidueSelect) onResidueSelect(null);
+                  if (setFocusedPair) setFocusedPair(null);
+                }} 
+                className="bg-red-900/40 hover:bg-red-600 text-red-300 hover:text-white px-3 py-1.5 rounded-md text-[11px] font-semibold transition-colors flex justify-center items-center gap-1.5 border border-red-800/50 cursor-pointer"
+              >
+                Remover Foco
+              </button>
+            )}
+            
+            <button 
+              onClick={() => {
+                if (onResidueSelect) onResidueSelect(null); 
+                if (setFocusedPair) setFocusedPair(null);
+                if (instLeft.current) { instLeft.current.zoomTo(); instLeft.current.render(); }
+                if (instRight.current) { instRight.current.zoomTo(); instRight.current.render(); }
+              }}
+              className="bg-[#2c5364] hover:bg-[#3a6b82] text-white px-3 py-1.5 rounded-md text-[11px] font-semibold transition-colors shadow-sm cursor-pointer border border-[#3a6b82]/50"
+            >
+              Centrar Tudo
+            </button>
+
+            {/* BOTÕES TOGGLE */}
+            <button 
+              onClick={() => setSyncViews(!syncViews)}
+              className={`px-3 py-1.5 rounded-md text-[11px] font-semibold transition-colors shadow-sm cursor-pointer border flex items-center gap-1.5 ${syncViews ? 'bg-[#2c5364] text-white border-[#4fc3f7]/50 shadow-[0_0_8px_rgba(79,195,247,0.2)]' : 'bg-[#15202b] hover:bg-[#2c5364] text-gray-400 hover:text-white border-gray-600 hover:border-[#3a6b82]/50'}`}
+              title="Sincronizar rotação das duas janelas"
+            >
+              {syncViews ? 'Sincronizado 🔒' : 'Sincronizar 🔓'}
+            </button>
+            
+            <button 
+              onClick={() => setIsSpinning(!isSpinning)}
+              className={`px-3 py-1.5 rounded-md text-[11px] font-semibold transition-colors shadow-sm cursor-pointer border ${isSpinning ? 'bg-[#2c5364] text-white border-[#4fc3f7]/50 shadow-[0_0_8px_rgba(79,195,247,0.2)]' : 'bg-[#15202b] hover:bg-[#2c5364] text-gray-400 hover:text-white border-gray-600 hover:border-[#3a6b82]/50'}`}
+            >
+              Rotação 360º
+            </button>
+            
+          </div>
+
+          {/* GRUPO DIREITO: DROPDOWNS */}
+          <div className="flex flex-wrap items-center gap-3">
+            
+            {/* SEPARADOR VISUAL (Esconde-se quando espreme) */}
+            <div className="w-[1px] h-6 bg-gray-700 hidden xl:block mr-1"></div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Estilo:</span>
+              <select 
+                value={proteinStyle} 
+                onChange={(e) => setProteinStyle(e.target.value)}
+                className="bg-[#15202b] text-white text-xs p-1.5 rounded border border-gray-600 w-full focus:outline-none focus:border-[#4fc3f7] cursor-pointer"
+              >
+                <option value="cartoon">Cartoon</option>
+                <option value="stick">Stick</option>
+                <option value="sphere">Esferas</option>
+                <option value="surface">Superfície</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Cores:</span>
+              <select 
+                value={proteinColor} 
+                onChange={(e) => setProteinColor(e.target.value)}
+                className="bg-[#15202b] text-white text-xs p-1.5 rounded border border-gray-600 w-full focus:outline-none focus:border-[#4fc3f7] cursor-pointer"
+              >
+                <option value="mutations">Mapa de Mutações</option>
+                <option value="spectrum">Arco-íris</option>
+                <option value="sstruc">Estrutura (Sec)</option>
+                <option value="chain">Por Cadeia</option>
+              </select>
+            </div>
+          </div>
+
+        </div>
       </div>
 
       {/* A MAGIA DO FLEXBOX: Estica os quadros 3D para o máximo! */}
