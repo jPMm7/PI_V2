@@ -67,8 +67,6 @@ export default function CompensatoryPanel({ compensatoryPairs, focusedPair, setF
     );
   };
 
-  if (!compensatoryPairs || compensatoryPairs.length === 0) return null;
-
   return (
     <section className={`flex flex-col relative animate-fade-in overflow-hidden ${isToolMode ? 'h-full max-h-none mb-0 bg-transparent rounded-none border-none' : 'bg-[#1c2a39] rounded-[10px] shadow-[0_8px_30px_rgba(0,0,0,0.15)] border border-gray-700/50 max-h-[400px] mb-8'}`}>              
       {/* CABEÇALHO COM O NOVO SELETOR DE UNIDADES */}
@@ -98,72 +96,85 @@ export default function CompensatoryPanel({ compensatoryPairs, focusedPair, setF
         </div>
       </div>
 
-      {/* TABELA DE DADOS INTERATIVA */}
-      <div className="overflow-y-auto custom-scrollbar relative z-10 h-full">
-        <table className="w-full text-left text-sm text-gray-300 border-collapse">
-          <thead className="text-sm text-gray-400 uppercase bg-[#15202b] sticky top-0 z-20 shadow-sm">
-            <tr>
-              <th onClick={() => requestSort('resi1')} className="px-6 py-4 font-bold border-b border-gray-700/50 cursor-pointer hover:bg-[#1c2a39] hover:text-gray-200 transition-colors group select-none">
-                Mutação 1 <SortArrows columnKey="resi1" />
-              </th>
-              <th onClick={() => requestSort('resi2')} className="px-6 py-4 font-bold border-b border-gray-700/50 cursor-pointer hover:bg-[#1c2a39] hover:text-gray-200 transition-colors group select-none">
-                Mutação 2 <SortArrows columnKey="resi2" />
-              </th>
-              <th onClick={() => requestSort('dist')} className="px-6 py-4 font-bold text-center border-b border-gray-700/50 cursor-pointer hover:bg-[#1c2a39] hover:text-gray-200 transition-colors group select-none">
-                {/* O título da tabela atualiza automaticamente o símbolo! */}
-                Distância 3D ({unitSymbol}) <SortArrows columnKey="dist" />
-              </th>
-              <th onClick={() => requestSort('nivel')} className="px-6 py-4 font-bold text-center border-b border-gray-700/50 cursor-pointer hover:bg-[#1c2a39] hover:text-gray-200 transition-colors group select-none">
-                Potencial de Interação <SortArrows columnKey="nivel" />
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {sortedPairs.map((pair, idx) => {
-              // A classificação é SEMPRE feita com base nos Angstroms reais para não haver falhas matemáticas
-              const distOriginalEmA = parseFloat(pair.dist);
-              let nivel = "Forte";
-              let color = "text-orange-400 bg-orange-900/20 border-orange-800/30";
-              
-              if (distOriginalEmA > 4.5) {
-                nivel = "Moderada";
-                color = "text-blue-400 bg-blue-900/20 border-blue-800/30";
-              }
-              
-              const isFocused = focusedPair && focusedPair.resi1 === pair.resi1 && focusedPair.resi2 === pair.resi2;
+      {/* TABELA OU MENSAGEM DE ESTADO VAZIO */}
+      {compensatoryPairs && compensatoryPairs.length > 0 ? (
+        <div className="overflow-y-auto custom-scrollbar relative z-10 h-full">
+          <table className="w-full text-left text-sm text-gray-300 border-collapse">
+            <thead className="text-sm text-gray-400 uppercase bg-[#15202b] sticky top-0 z-20 shadow-sm">
+              <tr>
+                <th onClick={() => requestSort('resi1')} className="px-6 py-4 font-bold border-b border-gray-700/50 cursor-pointer hover:bg-[#1c2a39] hover:text-gray-200 transition-colors group select-none">
+                  Mutação 1 <SortArrows columnKey="resi1" />
+                </th>
+                <th onClick={() => requestSort('resi2')} className="px-6 py-4 font-bold border-b border-gray-700/50 cursor-pointer hover:bg-[#1c2a39] hover:text-gray-200 transition-colors group select-none">
+                  Mutação 2 <SortArrows columnKey="resi2" />
+                </th>
+                <th onClick={() => requestSort('dist')} className="px-6 py-4 font-bold text-center border-b border-gray-700/50 cursor-pointer hover:bg-[#1c2a39] hover:text-gray-200 transition-colors group select-none">
+                  Distância 3D ({unitSymbol}) <SortArrows columnKey="dist" />
+                </th>
+                <th onClick={() => requestSort('nivel')} className="px-6 py-4 font-bold text-center border-b border-gray-700/50 cursor-pointer hover:bg-[#1c2a39] hover:text-gray-200 transition-colors group select-none">
+                  Potencial de Interação <SortArrows columnKey="nivel" />
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedPairs.map((pair, idx) => {
+                const distOriginalEmA = parseFloat(pair.dist);
+                let nivel = "Forte";
+                let color = "text-orange-400 bg-orange-900/20 border-orange-800/30";
+                
+                if (distOriginalEmA > 4.5) {
+                  nivel = "Moderada";
+                  color = "text-blue-400 bg-blue-900/20 border-blue-800/30";
+                }
+                
+                const isFocused = focusedPair && focusedPair.resi1 === pair.resi1 && focusedPair.resi2 === pair.resi2;
 
-              return (
-                <tr 
-                  key={idx} 
-                  onClick={() => {
-                    if (onResidueSelect) onResidueSelect(null); // Limpa as esferas do 3D
-                    if (setFocusedPair) setFocusedPair(pair);   // Ativa o Voo Duplo!
-                  }}
-                  className={`border-b border-gray-700/30 transition-colors cursor-pointer group ${isFocused ? 'bg-[#2c5364] shadow-inner border-l-4 border-l-[#4fc3f7]' : 'bg-[#1c2a39] hover:bg-[#233547]'}`}
-                >
-                  <td className="px-6 py-3 font-mono font-bold text-gray-200">
-                    Posição <span className="text-blue-300">{pair.resi1}</span>
-                  </td>
-                  <td className="px-6 py-3 font-mono font-bold text-gray-200">
-                    Posição <span className="text-green-300">{pair.resi2}</span>
-                  </td>
-                  <td className="px-6 py-3 font-mono font-bold text-center text-white">
-                    {/* Exibe o número convertido em tempo real! */}
-                    {formatDist(pair.dist)} {unitSymbol}
-                  </td>
-                  <td className="px-6 py-3 text-center">
-                    <span className={`px-2.5 py-1 rounded text-[10px] uppercase font-bold border tracking-wider shadow-sm ${color}`}>
-                      {nivel}
-                    </span>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        
-        <div className="h-2 bg-[#1c2a39]"></div>
-      </div>
+                return (
+                  <tr 
+                    key={idx} 
+                    onClick={() => {
+                      if (onResidueSelect) onResidueSelect(null);
+                      if (setFocusedPair) setFocusedPair(pair);
+                    }}
+                    className={`border-b border-gray-700/30 transition-colors cursor-pointer group ${isFocused ? 'bg-[#2c5364] shadow-inner border-l-4 border-l-[#4fc3f7]' : 'bg-[#1c2a39] hover:bg-[#233547]'}`}
+                  >
+                    <td className="px-6 py-3 font-mono font-bold text-gray-200">
+                      Posição <span className="text-blue-300">{pair.resi1}</span>
+                    </td>
+                    <td className="px-6 py-3 font-mono font-bold text-gray-200">
+                      Posição <span className="text-green-300">{pair.resi2}</span>
+                    </td>
+                    <td className="px-6 py-3 font-mono font-bold text-center text-white">
+                      {formatDist(pair.dist)} {unitSymbol}
+                    </td>
+                    <td className="px-6 py-3 text-center">
+                      <span className={`px-2.5 py-1 rounded text-[10px] uppercase font-bold border tracking-wider shadow-sm ${color}`}>
+                        {nivel}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <div className="h-2 bg-[#1c2a39]"></div>
+        </div>
+      ) : (
+        /* O NOVO "EMPTY STATE" - MENSAGEM QUANDO NÃO HÁ NADA */
+        <div className="flex-1 flex flex-col items-center justify-center p-8 text-center h-full min-h-[200px] bg-[#1c2a39]/30">
+          <svg xmlns="http://www.w3.org/2000/svg" width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="text-gray-600 mb-4">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+          <p className="text-gray-400 font-semibold text-sm m-0">
+            Nenhuma interação crítica detetada
+          </p>
+          <p className="text-gray-500 text-xs mt-2 max-w-sm m-0 leading-relaxed">
+            As mutações observadas nesta espécie não apresentam proximidade espacial (≤ 6.5Å) suficiente na estrutura 3D para sugerir uma compensação evolutiva direta.
+          </p>
+        </div>
+      )}
 
     </section>
   );
