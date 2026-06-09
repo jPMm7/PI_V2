@@ -263,6 +263,53 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
     }
   };
 
+  // ---> NOVA MAGIA 1: FUNÇÃO PARA GERAR O LINK DE PARTILHA <---
+  const handleShareWorkspace = (id) => {
+    // Constrói o URL dinâmico (ex: http://localhost:5173/?workspace=123-abc)
+    const shareUrl = `${window.location.origin}${window.location.pathname}?workspace=${id}`;
+    
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      setSaveMsg('🔗 Link de partilha copiado para a área de transferência!');
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+      toastTimeoutRef.current = setTimeout(() => { setSaveMsg(''); setSavedWorkspaceContext(null); }, 5000);
+    }).catch(err => {
+      setErrorMsg('Erro ao copiar o link. Podes partilhar este: ' + shareUrl);
+    });
+  };
+
+  // ---> NOVA MAGIA 2: LER O LINK ASSIM QUE A FERRAMENTA ABRE <---
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const workspaceId = urlParams.get('workspace');
+    
+    if (workspaceId) {
+      const fetchSharedWorkspace = async () => {
+        setIsSearching(true);
+        try {
+          const { data, error } = await supabase
+            .from('saved_workspaces')
+            .select('*')
+            .eq('id', workspaceId)
+            .single();
+            
+          if (error) throw error;
+          if (data) {
+            handleLoadWorkspace(data); // Reutiliza a tua fantástica função de carregamento!
+            
+            // Limpa o '?workspace=...' da barra de endereço para ficar bonito
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }
+        } catch (err) {
+          setErrorMsg("Sessão partilhada não encontrada ou o link é privado.");
+        } finally {
+          setIsSearching(false);
+        }
+      };
+      fetchSharedWorkspace();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleSaveWorkspace = async () => {
     if (!user) {
       setErrorMsg("Precisas de ter sessão iniciada para guardar a análise.");
@@ -1366,11 +1413,19 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
                       
                       
                       <div className="flex gap-2 items-center shrink-0">
+                        {/* BOTÃO ABRIR */}
                         <button onClick={() => handleLoadWorkspace(ws)} className="bg-[#2c5364] hover:bg-[#3a6b82] text-white px-4 py-2 rounded-md transition-colors text-sm font-semibold cursor-pointer shadow-lg">
                           Abrir
                         </button>
+                        
+                        {/* ---> NOVO: BOTÃO PARTILHAR <--- */}
+                        <button onClick={() => handleShareWorkspace(ws.id)} className="bg-blue-900/20 hover:bg-blue-600 text-blue-400 hover:text-white px-2.5 py-2 rounded-md transition-all border border-blue-800/30 hover:border-blue-500 cursor-pointer shadow-lg" title="Copiar Link de Partilha">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+                        </button>
+
+                        {/* BOTÃO APAGAR */}
                         <button onClick={() => handleDeleteWorkspace(ws.id)} className="bg-red-900/20 hover:bg-red-600 text-red-400 hover:text-white px-2.5 py-2 rounded-md transition-all border border-red-800/30 hover:border-red-500 cursor-pointer shadow-lg" title="Apagar Análise">
-                          <svg xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                         </button>
                       </div>
                     </div>
