@@ -8,8 +8,7 @@ const HUMAN_FALLBACK = {
 
 
 
-export default function ProteinViewer({ analysisState, selectedGridIndex, onResidueSelect, activeCompSpecies, setActiveCompSpecies, compensatoryPairs, setCompensatoryPairs }) {
-  const { gene, refSpecies, compSpeciesList, refSequence, compSequences } = analysisState;
+export default function ProteinViewer({ analysisState, selectedGridIndex, onResidueSelect, activeCompSpecies, setActiveCompSpecies, compensatoryPairs, setCompensatoryPairs, focusedPair, setFocusedPair }) {  const { gene, refSpecies, compSpeciesList, refSequence, compSequences } = analysisState;
 
 
   const viewerLeftRef = useRef(null);
@@ -164,10 +163,16 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
       // Mesmo sem foco, os tubos amarelos mantêm-se visíveis!
       if (instRight.current && compensatoryPairs.length > 0) {
         compensatoryPairs.forEach(pair => {
+          // A mesma matemática da tabela: <= 4.5 é Forte, > 4.5 é Moderada
+          const isForte = parseFloat(pair.dist) <= 4.5;
+          const lineColor = isForte ? "orange" : "#4fc3f7"; // Laranja ou Azul Claro
+          
           instRight.current.addCylinder({ 
             start: {x: pair.a1.x, y: pair.a1.y, z: pair.a1.z}, 
             end: {x: pair.a2.x, y: pair.a2.y, z: pair.a2.z}, 
-            radius: 0.15, color: "yellow", dashed: true 
+            radius: 0.15, 
+            color: lineColor, 
+            dashed: true 
           });
         });
       }
@@ -216,10 +221,16 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
       // Redesenha os tubos amarelos antes de focar na mutação
       if (instRight.current && compensatoryPairs.length > 0) {
         compensatoryPairs.forEach(pair => {
+          // A mesma matemática da tabela: <= 4.5 é Forte, > 4.5 é Moderada
+          const isForte = parseFloat(pair.dist) <= 4.5;
+          const lineColor = isForte ? "orange" : "#4fc3f7"; // Laranja ou Azul Claro
+          
           instRight.current.addCylinder({ 
             start: {x: pair.a1.x, y: pair.a1.y, z: pair.a1.z}, 
             end: {x: pair.a2.x, y: pair.a2.y, z: pair.a2.z}, 
-            radius: 0.15, color: "yellow", dashed: true 
+            radius: 0.15, 
+            color: lineColor, 
+            dashed: true 
           });
         });
       }
@@ -536,6 +547,8 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
   }, [gene, activeCompSpecies]);
 
 
+
+
   const handleManualUpload = (e, viewer, setLabel) => {
     const file = e.target.files[0];
     if (!file || !viewer) return;
@@ -556,6 +569,26 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
     reader.readAsText(file);
   };
 
+  // NOVO: Efeito que voa para as mutações compensatórias ao clicar na tabela (Sem Esferas!)
+  useEffect(() => {
+    if (!focusedPair) return;
+
+    if (zoomTimeoutRef.current) clearTimeout(zoomTimeoutRef.current);
+    isZoomingRef.current = true; // Põe a "venda" na sincronização
+
+    // A biblioteca 3Dmol permite passar um ARRAY de posições
+    const targetResidues = { resi: [focusedPair.resi1, focusedPair.resi2] };
+
+    // ZOOM APENAS NO ANIMAL (Janela de Baixo / Direita)
+    if (instRight.current) {
+      instRight.current.zoomTo(targetResidues, 800);
+    }
+
+    // A janela do Humano (instLeft) foi propositadamente removida daqui 
+    // para que se mantenha quieta a mostrar o panorama geral!
+
+    zoomTimeoutRef.current = setTimeout(() => { isZoomingRef.current = false; }, 1200);
+  }, [focusedPair]);
   return (
     <section id="3d-viewer" className="bg-white p-5 rounded-[10px] shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
       
@@ -604,14 +637,21 @@ export default function ProteinViewer({ analysisState, selectedGridIndex, onResi
         </div>
 
         <div className="flex flex-wrap gap-2 pt-1 border-t border-gray-700/50 mt-2">
-          {selectedGridIndex !== null && (
-            <button onClick={() => onResidueSelect && onResidueSelect(null)} className="flex-1 min-w-[90px] bg-red-900/40 hover:bg-red-600 text-red-300 hover:text-white py-1.5 rounded-md text-[11px] font-semibold transition-colors flex justify-center items-center gap-1.5 border border-red-800/50 cursor-pointer">
+          {(selectedGridIndex !== null || focusedPair !== null) && (
+            <button 
+              onClick={() => {
+                if (onResidueSelect) onResidueSelect(null);
+                if (setFocusedPair) setFocusedPair(null); // <--- Limpa a tabela
+              }} 
+              className="flex-1 min-w-[90px] bg-red-900/40 hover:bg-red-600 text-red-300 hover:text-white py-1.5 rounded-md text-[11px] font-semibold transition-colors flex justify-center items-center gap-1.5 border border-red-800/50 cursor-pointer"
+            >
               Remover Foco
             </button>
           )}
           <button 
             onClick={() => {
-              if (onResidueSelect) onResidueSelect(null); 
+              if (onResidueSelect) onResidueSelect(null);
+              if (setFocusedPair) setFocusedPair(null);
               if (zoomTimeoutRef.current) clearTimeout(zoomTimeoutRef.current);
               isZoomingRef.current = true;
               if (instLeft.current) { instLeft.current.zoomTo(); instLeft.current.render(); }
