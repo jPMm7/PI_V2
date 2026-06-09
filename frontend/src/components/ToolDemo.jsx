@@ -760,18 +760,19 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
 
       
       {showResults && refDataState && (
-        <div ref={resultsRef} className="mt-0 animate-fade-in scroll-mt-24">
+        // Removemos o mt-2 para mt-0 no isToolMode para colar a grelha aos controlos de cima!
+        <div ref={resultsRef} className={`${isToolMode ? 'mt-0' : 'mt-8'} animate-fade-in scroll-mt-24`}>
           
-          <div className="bg-[#1c2a39] text-gray-300 p-5 rounded-b-lg font-mono text-sm overflow-x-auto mb-6">
+          {/* MUDANÇA CRÍTICA: Tirar o 'pl' (padding-left) para a parede colar à extrema esquerda! */}
+          <div className={`bg-[#1c2a39] text-gray-300 font-mono text-sm overflow-x-auto ${isToolMode ? 'py-3 pr-3 pl-0 rounded-lg mb-0' : 'py-5 pr-5 pl-0 rounded-b-lg mb-6'}`}>
             
-            {/* NOVO: CÁLCULO DA GRELHA DINÂMICA MAXIMIZADA */}
+            {/* CÁLCULO DA GRELHA DINÂMICA MAXIMIZADA */}
             {(() => {
               let maxGridLength = refDataState.sequence.length;
               
               compDataListState.forEach(compData => {
                 if (!compData.loading && !compData.error && compData.sequence) {
                   const stats = calculateStats(refDataState.sequence, compData.sequence);
-                  // O tamanho necessário é o tamanho da proteína do animal menos o desvio inicial
                   const requiredLength = compData.sequence.length - stats.offset;
                   if (requiredLength > maxGridLength) {
                     maxGridLength = requiredLength;
@@ -779,20 +780,23 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
                 }
               });
 
-              // Cria um array com o tamanho exato da maior sequência para mapear a grelha
               const gridIndices = Array.from({ length: maxGridLength }, (_, i) => i);
 
               return (
-                <>
-            {/* LINHA DE REFERÊNCIA (FIXA NO SCROLL) */}
-                  <div className="flex mb-1 items-center">
-                    <div className="w-64 shrink-0 pr-4 bg-[#1c2a39] sticky left-0 z-10 flex flex-col justify-center border-r border-gray-700/30 mr-2">
+                <div className="min-w-max pb-2 flex flex-col">
+                  
+                  {/* LINHA DE REFERÊNCIA (FIXA NO SCROLL) */}
+                  {/* Fundo perfeitamente fundido */}
+                  <div className="flex items-center bg-[#1c2a39]">
+                    {/* Sem bordas, sem sombras, fundo exato! */}
+                    <div className="w-64 shrink-0 pl-4 pr-4 py-2 bg-[#1c2a39] sticky left-0 z-30 flex flex-col justify-center">
                       <span className="text-blue-400 font-bold block truncate" title={refDataState.species.replace(/_/g, ' ')}>⭐ {refDataState.species.replace(/_/g, ' ').toUpperCase()}</span>
                       <span className="text-gray-500 text-[10px]">
                         Gene: <strong className="text-blue-300">{refDataState.actualGeneSymbol}</strong> | ID: {refDataState.id}
                       </span>
                     </div>
-                    <div className="flex gap-[1px]">
+                    {/* pl-2 para não encostar a grelha completamente na parede invisível */}
+                    <div className="flex gap-[1px] pl-2">
                       {gridIndices.map((index) => {
                         const char = refDataState.sequence[index];
                         const isSelected = selectedGridIndex === index;
@@ -809,9 +813,9 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
                     </div>
                   </div>
 
-            {/* A RÉGUA DE POSIÇÕES */}
-                  <div className="flex my-3 items-center bg-[#15202b] py-1.5 rounded-sm border-y border-gray-700/50">
-                    <div className="w-64 shrink-0 pr-4 bg-[#15202b] sticky left-0 z-10 border-r border-gray-700/30 mr-2 flex justify-between items-center pl-3">
+                  {/* A RÉGUA DE POSIÇÕES */}
+                  <div className="flex items-center bg-[#15202b] border-y border-gray-700/50">
+                    <div className="w-64 shrink-0 pl-4 pr-4 py-1.5 bg-[#15202b] sticky left-0 z-30 flex justify-between items-center">
                       {selectedGridIndex !== null ? (
                         <button
                           onClick={() => onResidueSelect && onResidueSelect(null)}
@@ -823,7 +827,7 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
                       ) : <div/>}
                       <span className="text-gray-400 text-[10px] font-semibold uppercase tracking-wider block">Posição</span>
                     </div>
-                    <div className="flex gap-[1px]">
+                    <div className="flex gap-[1px] pl-2 items-center">
                       {gridIndices.map((index) => {
                         const pos = index + 1;
                         const isDecade = pos % 10 === 0;
@@ -843,149 +847,105 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
                     </div>
                   </div>
 
-            {/* AS PISTAS DE COMPARAÇÃO INTERATIVAS (EDITAR / APAGAR) */}
-            <div className="flex flex-col gap-2">
-              {compDataListState.map((compData, trackIdx) => {
-                const hasData = !compData.loading && !compData.error;
-                const stats = hasData ? calculateStats(refDataState.sequence, compData.sequence) : { mutations: 0, identity: 0 };
+                  {/* AS PISTAS DE COMPARAÇÃO INTERATIVAS */}
+                  <div className="flex flex-col">
+                    {compDataListState.map((compData, trackIdx) => {
+                      const hasData = !compData.loading && !compData.error;
+                      const stats = hasData ? calculateStats(refDataState.sequence, compData.sequence) : { mutations: 0, identity: 0 };
 
-                return (
-                  <div 
-                    key={`track-${compData.species}`} // DICA: Usar o ID da espécie como key em vez do trackIdx ajuda o React a animar a troca de posição corretamente
-                    className="flex items-center hover:bg-gray-800/40 rounded py-1 transition-all duration-300 ease-in-out transform opacity-100"
-                  >
-                    
-                    {/* COLUNA ESQUERDA FIXA COM OS BOTÕES DE LIXO E EDIÇÃO */}
-                    <div className="w-64 shrink-0 pr-4 bg-[#1c2a39] sticky left-0 z-10 flex flex-col justify-center border-r border-gray-700/50 mr-2 group/track">
-                      
-                      {/* NOME EDITÁVEL PARA UPLOADS LOCAIS */}
-                      {editingTrackId === compData.species ? (
-                        <div className="flex gap-1 items-center mb-1">
-                          <input 
-                            autoFocus
-                            type="text" 
-                            value={editingTrackName} 
-                            onChange={(e) => setEditingTrackName(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleRenameTrack(compData.species)}
-                            className="bg-[#15202b] text-white px-1.5 py-0.5 text-[11px] rounded w-full border border-blue-500 outline-none"
-                          />
-                          <button onClick={() => handleRenameTrack(compData.species)} className="text-green-400 hover:text-green-300">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1">
-                          <span className="text-green-400 font-bold block truncate" title={compData.displayName || compData.species.replace(/_/g, ' ')}>
-                            {(compData.displayName || compData.species.replace(/_/g, ' ')).toUpperCase()}
-                          </span>
-                          
-                          {/* Só mostra o lápis se for um upload (FASTA local) */}
-                          {compData.species.startsWith('UPLOAD_') && (
-                            <button 
-                              onClick={() => { setEditingTrackId(compData.species); setEditingTrackName(compData.displayName || 'Sequência Local'); }}
-                              className="text-gray-500 hover:text-blue-400 opacity-0 group-hover/track:opacity-100 transition-opacity cursor-pointer ml-1"
-                              title="Renomear Upload"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                            </button>
-                          )}
-                        </div>
-                      )}
-                      
-                      {/* NOVO: Mostrar o Nome Oficial do Gene e o ID no Animal */}
-                      {hasData && (
-                        <span className="text-gray-500 text-[10px] block truncate mb-0.5 mt-0.5">
-                          Gene: <strong className="text-green-200">{compData.actualGeneSymbol}</strong> | ID: {compData.id}
-                        </span>
-                      )}
-                      
-                      {/* Sub-barra de Status + Botões */}
-                      <div className="flex justify-between items-center text-[10px] mt-0.5">
-                        {hasData ? (
-                          <div className="flex gap-3 items-center">
-                            {/* BOTÃO DE RELATÓRIO EVIDENTE */}
-                            <button 
-                              onClick={() => setMutationModal({ isOpen: true, species: compData.species, mutations: stats.mutationDetails })}
-                              className="bg-red-900/30 text-red-300 border border-red-800/50 hover:bg-red-600 hover:text-white hover:border-red-400 hover:shadow-[0_0_12px_rgba(239,68,68,0.4)] px-2 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1.5 -ml-1"
-                              title="Abrir Relatório Detalhado"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
-                              <span className="font-bold">{stats.mutations} Mut</span>
-                            </button>
-                            <span className="text-green-300 font-bold py-0.5">Id: {stats.identity}%</span>
+                      return (
+                        <div 
+                          key={`track-${compData.species}`}
+                          // Alterado o hover para um azul/cinza elegante (#233547)
+                          className="flex items-center hover:bg-[#233547] transition-all duration-300 ease-in-out group/row"
+                        >
+                          {/* COLUNA ESQUERDA FIXA */}
+                          {/* MÁGICA: O group-hover tem EXATAMENTE a mesma cor da linha! Mistura-se na perfeição. */}
+                          <div className="w-64 shrink-0 pl-4 pr-4 py-2 bg-[#1c2a39] group-hover/row:bg-[#233547] transition-colors sticky left-0 z-30 flex flex-col justify-center group/track">
+                            
+                            {editingTrackId === compData.species ? (
+                              <div className="flex gap-1 items-center mb-1">
+                                <input 
+                                  autoFocus
+                                  type="text" 
+                                  value={editingTrackName} 
+                                  onChange={(e) => setEditingTrackName(e.target.value)}
+                                  onKeyDown={(e) => e.key === 'Enter' && handleRenameTrack(compData.species)}
+                                  className="bg-[#15202b] text-white px-1.5 py-0.5 text-[11px] rounded w-full border border-blue-500 outline-none"
+                                />
+                                <button onClick={() => handleRenameTrack(compData.species)} className="text-green-400 hover:text-green-300">
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1">
+                                <span className="text-green-400 font-bold block truncate" title={compData.displayName || compData.species.replace(/_/g, ' ')}>
+                                  {(compData.displayName || compData.species.replace(/_/g, ' ')).toUpperCase()}
+                                </span>
+                                {compData.species.startsWith('UPLOAD_') && (
+                                  <button 
+                                    onClick={() => { setEditingTrackId(compData.species); setEditingTrackName(compData.displayName || 'Sequência Local'); }}
+                                    className="text-gray-500 hover:text-blue-400 opacity-0 group-hover/track:opacity-100 transition-opacity cursor-pointer ml-1"
+                                    title="Renomear Upload"
+                                  >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                            
+                            {hasData && (
+                              <span className="text-gray-500 text-[10px] block truncate mb-0.5 mt-0.5">
+                                Gene: <strong className="text-green-200">{compData.actualGeneSymbol}</strong> | ID: {compData.id}
+                              </span>
+                            )}
+                            
+                            <div className="flex justify-between items-center text-[10px] mt-0.5">
+                              {hasData ? (
+                                <div className="flex gap-3 items-center">
+                                  <button 
+                                    onClick={() => setMutationModal({ isOpen: true, species: compData.species, mutations: stats.mutationDetails })}
+                                    className="bg-red-900/30 text-red-300 border border-red-800/50 hover:bg-red-600 hover:text-white hover:border-red-400 hover:shadow-[0_0_12px_rgba(239,68,68,0.4)] px-2 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1.5 -ml-1"
+                                    title="Abrir Relatório Detalhado"
+                                  >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
+                                    <span className="font-bold">{stats.mutations} Mut</span>
+                                  </button>
+                                  <span className="text-green-300 font-bold py-0.5">Id: {stats.identity}%</span>
+                                </div>
+                              ) : (
+                                <span className="text-gray-500 italic">---</span>
+                              )}
+                              
+                              <div className="flex gap-2 ml-auto items-center">
+                                <button onClick={() => handleMoveTrack(trackIdx, 'up')} disabled={trackIdx === 0} className={`text-gray-400 hover:text-blue-400 transition-colors cursor-pointer p-0.5 rounded hover:bg-gray-700/50 ${trackIdx === 0 ? 'opacity-10 cursor-not-allowed hover:text-gray-400 hover:bg-transparent' : ''}`}>
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
+                                </button>
+                                <button onClick={() => handleMoveTrack(trackIdx, 'down')} disabled={trackIdx === compSpeciesList.length - 1} className={`text-gray-400 hover:text-blue-400 transition-colors cursor-pointer p-0.5 rounded hover:bg-gray-700/50 ${trackIdx === compSpeciesList.length - 1 ? 'opacity-10 cursor-not-allowed hover:text-gray-400 hover:bg-transparent' : ''}`}>
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                </button>
+                                <button onClick={() => handleDeleteTrack(compData.species)} className="text-red-400/80 hover:text-red-400 transition-colors cursor-pointer p-0.5 rounded hover:bg-gray-700/50 ml-1">
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                </button>
+                              </div>
+                            </div>
                           </div>
-                        ) : (
-                          <span className="text-gray-500 italic">---</span>
-                        )}
-                        
-                        {/* BOTÕES DE REORDENAÇÃO TÁTICA (SUBIR / DESCER) COM ÍCONES MINIMALISTAS */}
-                        <div className="flex gap-2 ml-auto items-center">
-                          
-                          {/* Botão de Subir (Seta para Cima) */}
-                          <button 
-                            onClick={() => handleMoveTrack(trackIdx, 'up')}
-                            disabled={trackIdx === 0}
-                            className={`text-gray-400 hover:text-blue-400 transition-colors cursor-pointer p-0.5 rounded hover:bg-gray-700/50 ${
-                              trackIdx === 0 ? 'opacity-10 cursor-not-allowed hover:text-gray-400 hover:bg-transparent' : ''
-                            }`}
-                            title="Subir Pista"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                              <polyline points="18 15 12 9 6 15"></polyline>
-                            </svg>
-                          </button>
-                          
-                          {/* Botão de Descer (Seta para Baixo) */}
-                          <button 
-                            onClick={() => handleMoveTrack(trackIdx, 'down')}
-                            disabled={trackIdx === compSpeciesList.length - 1}
-                            className={`text-gray-400 hover:text-blue-400 transition-colors cursor-pointer p-0.5 rounded hover:bg-gray-700/50 ${
-                              trackIdx === compSpeciesList.length - 1 ? 'opacity-10 cursor-not-allowed hover:text-gray-400 hover:bg-transparent' : ''
-                            }`}
-                            title="Descer Pista"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                              <polyline points="6 9 12 15 18 9"></polyline>
-                            </svg>
-                          </button>
 
-                          {/* Botão de Apagar (Mantém-se minimalista ao lado) */}
-                          <button 
-                            onClick={() => handleDeleteTrack(compData.species)}
-                            className="text-red-400/80 hover:text-red-400 transition-colors cursor-pointer p-0.5 rounded hover:bg-gray-700/50 ml-1"
-                            title="Remover Faixa"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <polyline points="3 6 5 6 21 6"></polyline>
-                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                            </svg>
-                          </button>
-                          
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* COLUNA DIREITA FLUIDA (Aminoácidos alinhados de forma inteligente) */}
-                          {compData.loading ? (
-                            <span className="text-xs text-blue-300 animate-pulse pl-2 italic">A atualizar via Ensembl API...</span>
-                          ) : compData.error ? (
-                            <span className="text-red-400 text-xs pl-2 truncate max-w-xl" title={compData.error}>⚠️ {compData.error}</span>
-                          ) : (
-                            <div className="flex gap-[1px]">
-                              {gridIndices.map((index) => {
+                          {/* COLUNA DIREITA FLUIDA */}
+                          <div className="flex gap-[1px] pl-2">
+                            {compData.loading ? (
+                              <span className="text-xs text-blue-300 animate-pulse italic py-2">A atualizar via Ensembl API...</span>
+                            ) : compData.error ? (
+                              <span className="text-red-400 text-xs truncate max-w-xl py-2" title={compData.error}>⚠️ {compData.error}</span>
+                            ) : (
+                              gridIndices.map((index) => {
                                 const refChar = refDataState.sequence[index];
                                 const compIdx = index + stats.offset;
                                 const compChar = compData.sequence[compIdx];
 
                                 if (compIdx < 0 || compIdx >= compData.sequence.length) {
                                   return (
-                                    <span 
-                                      key={`c-${trackIdx}-${index}`} 
-                                      className="w-[14px] text-center inline-block rounded-sm text-gray-500 opacity-30 font-bold"
-                                      title="Gap de Sequência"
-                                    >
-                                      -
-                                    </span>
+                                    <span key={`c-${trackIdx}-${index}`} className="w-[14px] text-center inline-block rounded-sm text-gray-500 opacity-30 font-bold" title="Gap de Sequência">-</span>
                                   );
                                 }
 
@@ -994,92 +954,86 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
                                 const mutationLabel = isDiff ? `${refChar || '-'}${index + 1}${compChar}` : "";
 
                                 return (
-                                  <div key={`c-${trackIdx}-${index}`} className="relative group flex justify-center">
+                                  <div key={`c-${trackIdx}-${index}`} className="relative group flex items-center justify-center">
                                     <span 
                                       onClick={() => {
                                         if (onResidueSelect) onResidueSelect(index);
-                                        if (setActiveCompSpecies) setActiveCompSpecies(compData.species); // <-- A MAGIA DE SINCRONIZAÇÃO AQUI
+                                        if (setActiveCompSpecies) setActiveCompSpecies(compData.species);
                                       }}
-                                      className={`w-[14px] text-center inline-block rounded-sm transition-all cursor-pointer ${
-                                        isDiff 
-                                          ? 'bg-red-500 text-white font-bold hover:bg-red-400 hover:shadow-[0_0_8px_rgba(239,68,68,0.6)]' 
-                                          : 'text-gray-400 opacity-60 hover:text-white'
-                                      }`}
+                                      className={`w-[14px] text-center inline-block rounded-sm transition-all cursor-pointer ${isDiff ? 'bg-red-500 text-white font-bold hover:bg-red-400 hover:shadow-[0_0_8px_rgba(239,68,68,0.6)]' : 'text-gray-400 opacity-60 hover:text-white'}`}
                                     >
                                       {compChar}
                                     </span>
                                     
-                                    {/* NOVO: BALÃO FLUTUANTE CUSTOMIZADO (TOOLTIP) */}
                                     {isDiff && (
                                       <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50 flex flex-col items-center">
                                         <div className="bg-[#15202b] border border-red-900/60 shadow-[0_4px_12px_rgba(0,0,0,0.5)] rounded-md px-2 py-1 flex items-center gap-1.5 whitespace-nowrap">
                                           <span className="text-gray-400 text-[9px] uppercase tracking-wider font-semibold">Mut:</span>
                                           <span className="text-red-400 text-xs font-mono font-bold tracking-widest">{mutationLabel}</span>
                                         </div>
-                                        {/* Pequena seta geométrica do balão a apontar para a letra */}
                                         <div className="w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-t-[5px] border-t-[#15202b] -mt-[1px]"></div>
                                       </div>
                                     )}
-                                    
                                   </div>
                                 );
-                              })}
-                            </div>
-                          )}
+                              })
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* BOTÃO + ADICIONAR NOVA FAIXA INLINE */}
+                    <div className="flex items-center">
+                      <div className="w-64 shrink-0 pl-4 pr-4 py-3 bg-[#1c2a39] sticky left-0 z-30 flex flex-col justify-center">
+                        {isAddingTrack ? (
+                          <div className="flex items-center gap-2">
+                            <select 
+                              onChange={(e) => handleAddTrack(e.target.value)}
+                              defaultValue=""
+                              className="bg-[#15202b] text-white text-xs p-1.5 rounded border border-gray-600 w-full focus:outline-none focus:border-blue-400"
+                            >
+                              <option value="" disabled>Selecionar espécie...</option>
+                              {SPECIES_DATABASE.map(s => (
+                                <option key={`add-${s.id}`} value={s.id} disabled={s.id === refSpecies || compSpeciesList.includes(s.id)}>
+                                  {s.name}
+                                </option>
+                              ))}
+                            </select>
+                            <button onClick={() => setIsAddingTrack(false)} className="text-gray-400 hover:text-white transition-colors cursor-pointer shrink-0">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex gap-2 w-full">
+                            <button 
+                              onClick={() => setIsAddingTrack(true)}
+                              className="flex-1 flex items-center justify-center gap-2 py-1.5 border border-dashed border-gray-600 rounded text-gray-400 hover:text-blue-400 hover:border-blue-400 hover:bg-[#15202b] transition-all text-[11px] font-semibold cursor-pointer"
+                              title="Adicionar da Base de Dados Ensembl"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                              API Ensembl
+                            </button>
+                            
+                            <button 
+                              onClick={() => fileInputRef.current?.click()}
+                              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 border border-dashed border-purple-700/60 rounded text-purple-400 hover:text-purple-300 hover:border-purple-400 hover:bg-[#15202b] transition-all text-[11px] font-semibold cursor-pointer"
+                              title="Upload do teu próprio ficheiro de Sequência"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                              FASTA Local
+                            </button>
+                            <input type="file" accept=".fasta,.fa,.txt" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1"></div>
+                    </div>
 
                   </div>
-                );
-              })}
-
-              {/* BOTÃO + ADICIONAR NOVA FAIXA INLINE */}
-              <div className="flex items-center py-2">
-                <div className="w-64 shrink-0 pr-4 sticky left-0 z-10 flex flex-col justify-center mr-2">
-                  {isAddingTrack ? (
-                    <div className="flex items-center gap-2">
-                      <select 
-                        onChange={(e) => handleAddTrack(e.target.value)}
-                        defaultValue=""
-                        className="bg-[#15202b] text-white text-xs p-1.5 rounded border border-gray-600 w-full focus:outline-none focus:border-blue-400"
-                      >
-                        <option value="" disabled>Selecionar espécie...</option>
-                        {SPECIES_DATABASE.map(s => (
-                          <option key={`add-${s.id}`} value={s.id} disabled={s.id === refSpecies || compSpeciesList.includes(s.id)}>
-                            {s.name}
-                          </option>
-                        ))}
-                      </select>
-                      <button onClick={() => setIsAddingTrack(false)} className="text-gray-400 hover:text-white transition-colors cursor-pointer shrink-0">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex gap-2 w-full">
-                      <button 
-                        onClick={() => setIsAddingTrack(true)}
-                        className="flex-1 flex items-center justify-center gap-2 py-1.5 border border-dashed border-gray-600 rounded text-gray-400 hover:text-blue-400 hover:border-blue-400 hover:bg-[#15202b] transition-all text-[11px] font-semibold cursor-pointer"
-                        title="Adicionar da Base de Dados Ensembl"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                        API Ensembl
-                      </button>
-                      
-                      <button 
-                        onClick={() => fileInputRef.current?.click()}
-                        className="flex-1 flex items-center justify-center gap-1.5 py-1.5 border border-dashed border-purple-700/60 rounded text-purple-400 hover:text-purple-300 hover:border-purple-400 hover:bg-[#15202b] transition-all text-[11px] font-semibold cursor-pointer"
-                        title="Upload do teu próprio ficheiro de Sequência"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-                        FASTA Local
-                      </button>
-                      <input type="file" accept=".fasta,.fa,.txt" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
-                    </div>
-                  )}
                 </div>
-              </div>
-            </div> 
-            </>
-          );
-        })()}
+              );
+            })()}
           </div>
         </div>
       )}
