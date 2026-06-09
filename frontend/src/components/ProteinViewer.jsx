@@ -437,13 +437,24 @@ export default function ProteinViewer({
       const speciesName = targetSpeciesId.replace(/_/g, ' ');
       setLabel(`A mapear no UniProt...`);
       
-      const uniprotUrl = `https://rest.uniprot.org/uniprotkb/search?query=(gene:${targetGene})+AND+(organism_name:"${speciesName}")&size=1&format=json`;
-      const uniprotRes = await fetch(uniprotUrl);
-      
+      // 1ª TENTATIVA: Pesquisa restrita pelo Nome Oficial do Gene
+      let uniprotUrl = `https://rest.uniprot.org/uniprotkb/search?query=(gene:${targetGene})+AND+(organism_name:"${speciesName}")&size=1&format=json`;
+      let uniprotRes = await fetch(uniprotUrl);
       if (!uniprotRes.ok) throw new Error("Falha na API");
-      const uniprotJson = await uniprotRes.json();
+      let uniprotJson = await uniprotRes.json();
 
+      // ---> NOVO: MOTOR DE BUSCA ALARGADA (FALLBACK UNIPROT) <---
+      // Se não encontrar o gene exato (porque no animal tem outro nome), pesquisa de forma lata!
+      if (!uniprotJson.results || uniprotJson.results.length === 0) {
+        setLabel(`A procurar sinónimos...`);
+        uniprotUrl = `https://rest.uniprot.org/uniprotkb/search?query=(${targetGene})+AND+(organism_name:"${speciesName}")&size=1&format=json`;
+        uniprotRes = await fetch(uniprotUrl);
+        uniprotJson = await uniprotRes.json();
+      }
+
+      // Se mesmo com pesquisa lata não houver registo, então a ciência ainda não tem esta proteína catalogada!
       if (!uniprotJson.results || uniprotJson.results.length === 0) throw new Error(`Sem registo`);
+      
       const accession = uniprotJson.results[0].primaryAccession;
 
       setLabel(`A contactar AlphaFold...`);

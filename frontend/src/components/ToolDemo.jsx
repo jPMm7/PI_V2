@@ -37,6 +37,34 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
   const [liveSuggestions, setLiveSuggestions] = useState([]);
   const [isSearchingGene, setIsSearchingGene] = useState(false);
 
+  // ---> NOVO: ESTADOS E MOTOR DA BASE DE DADOS DE ESPÉCIES (ENSEMBL) <---
+  const [allEnsemblSpecies, setAllEnsemblSpecies] = useState([]);
+  const [speciesSearchTerm, setSpeciesSearchTerm] = useState('');
+
+  // 1. Vai buscar a lista de 300+ animais silenciosamente em background
+  useEffect(() => {
+    const fetchEnsemblSpecies = async () => {
+      try {
+        const res = await fetch('https://rest.ensembl.org/info/species?content-type=application/json');
+        if (res.ok) {
+          const data = await res.json();
+          setAllEnsemblSpecies(data.species || []);
+        }
+      } catch (err) {
+        console.error("Erro ao transferir catálogo de espécies", err);
+      }
+    };
+    fetchEnsemblSpecies();
+  }, []);
+
+  // 2. Filtra a lista em milissegundos enquanto o utilizador escreve!
+  const filteredLiveSpecies = speciesSearchTerm.trim().length >= 2
+    ? allEnsemblSpecies.filter(s =>
+        (s.display_name && s.display_name.toLowerCase().includes(speciesSearchTerm.toLowerCase())) ||
+        (s.name && s.name.toLowerCase().includes(speciesSearchTerm.toLowerCase()))
+      ).slice(0, 20) // Mostra o top 20 para ser super fluido
+    : [];
+
   // ---> NOVO: MOTOR QUE FALA COM A UNIPROT EM TEMPO REAL <---
   useEffect(() => {
     const term = searchTerm.trim().toUpperCase();
@@ -732,14 +760,26 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
             <ul className={`absolute z-50 w-full border mt-1 rounded-md shadow-xl max-h-60 overflow-y-auto flex flex-col ${isToolMode ? 'bg-[#1c2a39] border-gray-600 text-white' : 'bg-white border-gray-200'}`}>
               
               {searchTerm.trim().length < 2 ? (
-                // ESTADO 1: INICIAL (Menos de 2 letras mostra os Populares)
+                // ESTADO 1: INICIAL (Menos de 2 letras mostra a lista ANTIGA TODA!)
                 <>
-                  <li className="p-2 text-[10px] uppercase tracking-wider font-bold text-gray-500 bg-gray-800/20 shadow-sm z-10 sticky top-0">Populares</li>
-                  {GENE_DATABASE.slice(0, 5).map((gene) => (
+                  {/* MAGIA 1: Cores Sólidas (bg-[#15202b] e bg-gray-100) evitam que o scroll apareça por trás! */}
+                  <li className={`p-2 text-[10px] uppercase tracking-wider font-bold shadow-sm z-10 sticky top-0 border-b ${isToolMode ? 'bg-[#15202b] text-gray-400 border-gray-700' : 'bg-gray-100 text-gray-500 border-gray-200'}`}>
+                    Populares (Base de Dados Interna)
+                  </li>
+                  
+                  {/* MAGIA 2: Usamos o filteredGenes para ter a lista toda de 36 genes e reagir à 1ª letra! */}
+                  {filteredGenes.map((gene) => (
                     <li key={`pop-${gene}`} onClick={() => { setSearchTerm(gene); setShowSuggestions(false); }} className={`p-3 cursor-pointer font-medium border-b transition-colors flex items-center gap-2 ${isToolMode ? 'hover:bg-[#15202b] border-gray-700' : 'hover:bg-[#eef3f8] border-gray-100'}`}>
                       🧬 {gene}
                     </li>
                   ))}
+                  
+                  {/* Mensagem simpática se a 1ª letra não existir na BD local */}
+                  {filteredGenes.length === 0 && (
+                    <li className="p-4 text-center text-xs text-gray-500 italic">
+                      Continua a escrever para procurar na nuvem...
+                    </li>
+                  )}
                 </>
               ) : isSearchingGene ? (
                 // ESTADO 2: LOADING (A falar com a API da UniProt)
@@ -750,10 +790,12 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
               ) : liveSuggestions.length > 0 ? (
                 // ESTADO 3: RESULTADOS LIVE DA NUVEM
                 <>
-                  <li className="p-2 text-[10px] uppercase tracking-wider font-bold text-[#4fc3f7] bg-[#4fc3f7]/10 flex justify-between shadow-sm z-10 sticky top-0">
+                  {/* MAGIA 1: Cores Sólidas (bg-[#15202b] e bg-[#f0f9ff]) evitam sobreposição visual! */}
+                  <li className={`p-2 text-[10px] uppercase tracking-wider font-bold flex justify-between shadow-sm z-10 sticky top-0 border-b ${isToolMode ? 'bg-[#15202b] text-[#4fc3f7] border-gray-700' : 'bg-[#f0f9ff] text-[#0284c7] border-[#bae6fd]'}`}>
                     <span>UniProt Database</span>
                     <span className="text-[9px] flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span> Live</span>
                   </li>
+                  
                   {liveSuggestions.map((gene) => (
                     <li key={`live-${gene}`} onClick={() => { setSearchTerm(gene); setShowSuggestions(false); }} className={`p-3 cursor-pointer font-medium border-b transition-colors flex items-center gap-2 ${isToolMode ? 'hover:bg-[#15202b] border-gray-700' : 'hover:bg-[#eef3f8] border-gray-100'}`}>
                       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-400"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
@@ -766,7 +808,7 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
                 <li className="p-5 text-center text-sm text-gray-400 flex flex-col items-center gap-2">
                   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-50"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                   Nenhum gene comum encontrado.
-                  <span className="text-[10px] text-gray-500 mt-1">Podes forçar a pesquisa clicando em "Alinhar".</span>
+                  <span className="text-[10px] text-gray-500 mt-1">Podes forçar a pesquisa clicando em "Alinhar Tudo".</span>
                 </li>
               )}
             </ul>
@@ -783,11 +825,11 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
           </select>
         </div>
         
-        {/* DROPDOWN ESPÉCIES */}
+        {/* DROPDOWN ESPÉCIES (AGORA COM BARRA DE PESQUISA INTEGRADA) */}
         <div className="flex-1 w-full relative z-40" ref={multiSelectRef}>
           <label className={`block font-semibold mb-1 ${isToolMode ? 'text-gray-400 text-[10px] uppercase' : 'text-[#1c2a39] mb-2'}`}>Animais</label>
           <div 
-            onClick={() => setShowMultiSelect(!showMultiSelect)} 
+            onClick={() => { setShowMultiSelect(!showMultiSelect); setSpeciesSearchTerm(''); }} 
             className={`w-full border p-2 rounded-md cursor-pointer flex justify-between items-center ${isToolMode ? 'bg-[#15202b] border-gray-600' : 'bg-white border-gray-300'}`}
           >
             <span className={isToolMode ? 'text-white text-sm font-semibold' : 'text-gray-700 font-medium'}>
@@ -797,52 +839,105 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
           </div>
 
           {showMultiSelect && (
-            <div className={`absolute z-20 w-full border mt-1 rounded-md shadow-xl max-h-60 overflow-y-auto p-2 flex flex-col gap-1 ${isToolMode ? 'bg-[#1c2a39] border-gray-600 text-white' : 'bg-white border-gray-300'}`}>
-              {SPECIES_DATABASE.filter(s => s.id !== refSpecies).map(species => (
-                <label key={`ms-${species.id}`} className={`flex items-center gap-3 p-2 rounded cursor-pointer border border-transparent transition-colors ${isToolMode ? 'hover:bg-[#15202b] hover:border-gray-600' : 'hover:bg-gray-50 hover:border-gray-200'}`}>
-                  <input 
-                    type="checkbox" 
-                    checked={compSpeciesList.includes(species.id)}
-                    onChange={() => toggleSpecies(species.id)}
-                    className={`w-4 h-4 rounded cursor-pointer ${isToolMode ? 'text-[#4fc3f7] focus:ring-[#4fc3f7]' : 'text-[#2c5364] focus:ring-[#2c5364]'}`}
-                  />
-                  <span className={`text-sm font-medium ${isToolMode ? 'text-gray-200' : 'text-gray-700'}`}>{species.name}</span>
-                </label>
-              ))}
-            </div>
-          )}
-        </div>
-        
-        <div className="w-full lg:w-auto flex flex-wrap gap-2 items-end">
-          <button onClick={handleSmartSearch} disabled={isSearching} className={`w-full lg:w-auto text-white px-6 py-2.5 rounded-md transition-colors font-medium disabled:opacity-50 h-full border ${isToolMode ? 'bg-blue-600 hover:bg-blue-500 border-blue-500 shadow-sm' : 'bg-[#2c5364] hover:bg-[#1c2a39] border-transparent'}`}>
-            {isSearching ? 'A extrair...' : 'Alinhar Tudo'}
-          </button>
-          
-          {user && (
-            <div className="flex gap-2 w-full lg:w-auto">
-              {/* BOTÃO GUARDAR COM ÍCONE */}
-              <button 
-                onClick={handleSaveWorkspace} 
-                disabled={isSaving} 
-                className="flex-1 lg:flex-none bg-green-700/90 text-white px-4 py-2.5 rounded-md hover:bg-green-600 transition-colors text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-1.5 border border-green-800 shrink-0"
-                title="Guardar sessão na Cloud"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-                {isSaving ? 'A guardar...' : 'Guardar'}
-              </button>
+            <div className={`absolute z-20 w-full border mt-1 rounded-md shadow-xl overflow-hidden flex flex-col ${isToolMode ? 'bg-[#1c2a39] border-gray-600 text-white' : 'bg-white border-gray-300'}`}>
               
-              {/* BOTÃO CARREGAR COM ÍCONE */}
-              <button 
-                onClick={handleOpenWorkspaces} 
-                className="flex-1 lg:flex-none bg-blue-700/90 text-white px-4 py-2.5 rounded-md hover:bg-blue-600 transition-colors text-sm font-medium flex items-center justify-center gap-1.5 border border-blue-800 shrink-0"
-                title="Carregar sessões anteriores"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
-                Carregar
-              </button>
+              {/* 1. BARRA DE PESQUISA INTERNA */}
+              <div className={`p-2 border-b ${isToolMode ? 'border-gray-700/50 bg-[#15202b]' : 'border-gray-200 bg-gray-50'}`}>
+                <input 
+                  type="text" 
+                  placeholder="Pesquisar (ex: dog, mouse)..."
+                  value={speciesSearchTerm}
+                  onChange={(e) => setSpeciesSearchTerm(e.target.value)}
+                  className={`w-full text-xs px-2 py-1.5 rounded border focus:outline-none focus:border-blue-400 transition-colors ${isToolMode ? 'bg-[#1c2a39] border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-800'}`}
+                  autoFocus
+                />
+              </div>
+
+              {/* 2. LISTA DE ANIMAIS DINÂMICA */}
+              <div className="max-h-60 overflow-y-auto p-2 flex flex-col gap-1 custom-scrollbar">
+                {speciesSearchTerm.trim().length < 2 ? (
+                  <>
+                    <div className="text-[10px] text-gray-400 font-bold uppercase mb-1 px-1 mt-1">Populares</div>
+                    {SPECIES_DATABASE.filter(s => s.id !== refSpecies).map(species => (
+                      <label key={`ms-${species.id}`} className={`flex items-center gap-3 p-2 rounded cursor-pointer border border-transparent transition-colors ${isToolMode ? 'hover:bg-[#15202b] hover:border-gray-600' : 'hover:bg-gray-50 hover:border-gray-200'}`}>
+                        <input 
+                          type="checkbox" 
+                          checked={compSpeciesList.includes(species.id)}
+                          onChange={() => toggleSpecies(species.id)}
+                          className={`w-4 h-4 rounded cursor-pointer ${isToolMode ? 'text-[#4fc3f7] focus:ring-[#4fc3f7]' : 'text-[#2c5364] focus:ring-[#2c5364]'}`}
+                        />
+                        <span className={`text-sm font-medium ${isToolMode ? 'text-gray-200' : 'text-gray-700'}`}>{species.name}</span>
+                      </label>
+                    ))}
+                  </>
+                ) : (
+                  <>
+                    <div className="text-[10px] text-[#4fc3f7] font-bold uppercase mb-1 px-1 mt-1 flex justify-between items-center">
+                      <span>Ensembl Database</span>
+                      <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span> Live</span>
+                    </div>
+                    {filteredLiveSpecies.filter(s => s.name !== refSpecies).map(species => (
+                      <label key={`ms-${species.name}`} className={`flex items-center gap-3 p-2 rounded cursor-pointer border border-transparent transition-colors ${isToolMode ? 'hover:bg-[#15202b] hover:border-gray-600' : 'hover:bg-gray-50 hover:border-gray-200'}`}>
+                        <input 
+                          type="checkbox" 
+                          checked={compSpeciesList.includes(species.name)}
+                          onChange={() => toggleSpecies(species.name)}
+                          className={`w-4 h-4 rounded cursor-pointer ${isToolMode ? 'text-[#4fc3f7] focus:ring-[#4fc3f7]' : 'text-[#2c5364] focus:ring-[#2c5364]'}`}
+                        />
+                        <span className={`text-sm font-medium ${isToolMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                          {species.display_name} <span className="text-[10px] opacity-50">({species.name})</span>
+                        </span>
+                      </label>
+                    ))}
+                    {filteredLiveSpecies.length === 0 && (
+                      <div className="p-3 text-center text-xs text-gray-500 italic">Nenhum animal encontrado.</div>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
           )}
         </div>
+
+
+        {/* ---> OS BOTÕES QUE DESAPARECERAM VOLTAM AQUI! <--- */}
+        <div className="w-full lg:w-auto flex flex-wrap lg:flex-nowrap gap-2 items-end shrink-0">
+          
+          <button 
+            onClick={handleSmartSearch} 
+            disabled={isSearching} 
+            className={`w-full lg:w-auto text-white px-6 py-2 rounded-md transition-colors font-bold disabled:opacity-50 border shadow-sm flex items-center justify-center gap-1.5 ${isToolMode ? 'bg-blue-600 hover:bg-blue-500 border-blue-500' : 'bg-[#2c5364] hover:bg-[#1c2a39] border-transparent'}`}
+          >
+            {isSearching ? 'A Extrair...' : 'Alinhar'}
+          </button>
+
+          <button 
+            onClick={handleSaveWorkspace} 
+            disabled={isSaving}
+            className={`w-full lg:w-auto text-white px-4 py-2 rounded-md transition-colors font-semibold disabled:opacity-50 border shadow-sm flex items-center justify-center gap-1.5 ${isToolMode ? 'bg-green-700 hover:bg-green-600 border-green-600' : 'bg-[#3a6b82] hover:bg-[#2c5364] border-transparent'}`}
+            title="Guardar Análise na Cloud"
+          >
+            {isSaving ? (
+               <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+            ) : (
+               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+            )}
+            {/* Esconde a palavra "Guardar" se estivermos num monitor pequeno em modo IDE */}
+            <span className={isToolMode ? "hidden 2xl:inline" : "inline"}>Guardar</span>
+          </button>
+
+          <button 
+            onClick={handleOpenWorkspaces} 
+            className={`w-full lg:w-auto text-white px-4 py-2 rounded-md transition-colors font-semibold border shadow-sm flex items-center justify-center gap-1.5 ${isToolMode ? 'bg-purple-700 hover:bg-purple-600 border-purple-600' : 'bg-[#48829c] hover:bg-[#3a6b82] border-transparent'}`}
+            title="Abrir as Minhas Análises"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+            <span className={isToolMode ? "hidden 2xl:inline" : "inline"}>Carregar</span>
+          </button>
+
+        </div>
+        {/* ---> FIM DOS BOTÕES <--- */}
+
       </div>
 
       
@@ -1072,25 +1167,57 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
 
                     {/* BOTÃO + ADICIONAR NOVA FAIXA INLINE */}
                     <div className="flex items-center">
-                      <div className="w-64 shrink-0 pl-4 pr-4 py-3 bg-[#1c2a39] sticky left-0 z-30 flex flex-col justify-center">
+                      <div className="w-64 shrink-0 pl-4 pr-4 py-3 bg-[#1c2a39] sticky left-0 z-30 flex flex-col justify-center border-r border-gray-700/50 shadow-[4px_0_12px_rgba(0,0,0,0.5)]">
+                        
                         {isAddingTrack ? (
-                          <div className="flex items-center gap-2">
-                            <select 
-                              onChange={(e) => handleAddTrack(e.target.value)}
-                              defaultValue=""
-                              className="bg-[#15202b] text-white text-xs p-1.5 rounded border border-gray-600 w-full focus:outline-none focus:border-blue-400"
-                            >
-                              <option value="" disabled>Selecionar espécie...</option>
-                              {SPECIES_DATABASE.map(s => (
-                                <option key={`add-${s.id}`} value={s.id} disabled={s.id === refSpecies || compSpeciesList.includes(s.id)}>
-                                  {s.name}
-                                </option>
-                              ))}
-                            </select>
-                            <button onClick={() => setIsAddingTrack(false)} className="text-gray-400 hover:text-white transition-colors cursor-pointer shrink-0">
-                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                            </button>
+                          
+                          <div className="flex flex-col gap-2 relative w-full">
+                            <div className="flex items-center gap-2">
+                              <input 
+                                autoFocus
+                                type="text"
+                                placeholder="Pesquisar animal..."
+                                value={speciesSearchTerm}
+                                onChange={(e) => setSpeciesSearchTerm(e.target.value)}
+                                className="bg-[#15202b] text-white text-xs p-1.5 rounded border border-gray-600 w-full focus:outline-none focus:border-blue-400"
+                              />
+                              <button onClick={() => { setIsAddingTrack(false); setSpeciesSearchTerm(''); }} className="text-gray-400 hover:text-white transition-colors cursor-pointer shrink-0">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                              </button>
+                            </div>
+
+                            {/* Dropdown flutuante de sugestões para Add Track */}
+                            <div className="absolute top-full left-0 mt-1 w-[260px] bg-[#1c2a39] border border-gray-600 rounded-md shadow-xl max-h-48 overflow-y-auto z-50 custom-scrollbar">
+                               {speciesSearchTerm.trim().length < 2 ? (
+                                  <>
+                                    <div className="text-[10px] text-gray-400 font-bold uppercase p-2 border-b border-gray-700 bg-[#15202b] sticky top-0">Populares</div>
+                                    {SPECIES_DATABASE.filter(s => s.id !== refSpecies && !compSpeciesList.includes(s.id)).map(s => (
+                                      <div key={`add-${s.id}`} onClick={() => { handleAddTrack(s.id); setSpeciesSearchTerm(''); }} className="p-2 cursor-pointer text-xs text-white hover:bg-[#2c5364] border-b border-gray-700/50">
+                                        {s.name}
+                                      </div>
+                                    ))}
+                                  </>
+                               ) : (
+                                  <>
+                                    <div className="text-[10px] text-[#4fc3f7] font-bold uppercase p-2 border-b border-gray-700 bg-[#15202b] sticky top-0 flex justify-between">
+                                      <span>Ensembl Live</span>
+                                      <span className="animate-pulse">🟢</span>
+                                    </div>
+                                    {filteredLiveSpecies.map(s => {
+                                      const isAdded = s.name === refSpecies || compSpeciesList.includes(s.name);
+                                      return (
+                                        <div key={`add-live-${s.name}`} onClick={() => { if(!isAdded) { handleAddTrack(s.name); setSpeciesSearchTerm(''); } }} className={`p-2 text-xs border-b border-gray-700/50 flex justify-between items-center ${isAdded ? 'opacity-50 cursor-not-allowed text-gray-500' : 'cursor-pointer text-white hover:bg-[#2c5364]'}`}>
+                                          <span className="truncate pr-2" title={s.display_name}>{s.display_name} <span className="opacity-50 text-[10px]">({s.name})</span></span>
+                                          {isAdded && <span className="text-[9px] bg-gray-700 px-1 rounded shrink-0">✔</span>}
+                                        </div>
+                                      );
+                                    })}
+                                    {filteredLiveSpecies.length === 0 && <div className="p-3 text-xs text-gray-500 text-center italic">Sem resultados.</div>}
+                                  </>
+                               )}
+                            </div>
                           </div>
+
                         ) : (
                           <div className="flex gap-2 w-full">
                             <button 
