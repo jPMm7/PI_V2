@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 
-export default function CompensatoryPanel({ compensatoryPairs, focusedPair, setFocusedPair, onResidueSelect }) {
+export default function CompensatoryPanel({ compensatoryPairs, focusedPair, setFocusedPair, onResidueSelect, isToolMode }) {
   // 1. ESTADOS
   const [sortConfig, setSortConfig] = useState({ key: 'dist', direction: 'asc' });
   const [unit, setUnit] = useState('A'); // Unidades possíveis: 'A', 'nm', 'pm'
@@ -70,10 +70,9 @@ export default function CompensatoryPanel({ compensatoryPairs, focusedPair, setF
   if (!compensatoryPairs || compensatoryPairs.length === 0) return null;
 
   return (
-    <section className="bg-[#1c2a39] flex flex-col rounded-[10px] shadow-[0_8px_30px_rgba(0,0,0,0.15)] border border-gray-700/50 mb-8 relative overflow-hidden animate-fade-in max-h-[400px]">
-      
+    <section className={`flex flex-col relative animate-fade-in overflow-hidden ${isToolMode ? 'h-full max-h-none mb-0 bg-transparent rounded-none border-none' : 'bg-[#1c2a39] rounded-[10px] shadow-[0_8px_30px_rgba(0,0,0,0.15)] border border-gray-700/50 max-h-[400px] mb-8'}`}>              
       {/* CABEÇALHO COM O NOVO SELETOR DE UNIDADES */}
-      <div className="p-4 border-b border-gray-700/50 relative z-10 shrink-0 bg-[#1c2a39] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className={`p-4 border-b border-gray-700/50 relative z-10 shrink-0 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 ${isToolMode ? 'bg-[#15202b]' : 'bg-[#1c2a39]'}`}>
         <div>
           <h3 className="text-white text-base font-bold mb-1 flex items-center gap-2 m-0">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4fc3f7" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>

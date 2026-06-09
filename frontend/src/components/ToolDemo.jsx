@@ -26,11 +26,14 @@ const SPECIES_DATABASE = [
   { id: 'delphinus_delphis', name: 'Delphinus delphis (Golfinho)' }
 ];
 
-export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResidueSelect, setActiveCompSpecies }) {  const [searchTerm, setSearchTerm] = useState('TP53');
+export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResidueSelect, setActiveCompSpecies, isToolMode }) {  
+  
+  // A VARIÁVEL QUE TINHA DESAPARECIDO VOLTOU!
+  const [searchTerm, setSearchTerm] = useState('TP53');
+  
   const [showSuggestions, setShowSuggestions] = useState(false);
   const dropdownRef = useRef(null);
   
-
   const [refSpecies, setRefSpecies] = useState('homo_sapiens');
   const [compSpeciesList, setCompSpeciesList] = useState(['felis_catus', 'pan_troglodytes']);
   const [showMultiSelect, setShowMultiSelect] = useState(false);
@@ -650,26 +653,34 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
   };
 
   return ( 
-    <> {/* <--- ADICIONA ESTA TAG AQUI */}
-    <section id="tool" className="bg-white p-8 mb-8 rounded-[10px] shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
-      <h2 className="text-[#1c2a39] text-[28px] font-bold mt-0 mb-2">Motor de Alinhamento Múltiplo (MSA)</h2>
-      <p className="mb-6 text-gray-700">Explora o nosso catálogo e alinha várias espécies em simultâneo contra o proteoma de referência.</p>
+    <>
+    <section id="tool" className={isToolMode ? "flex flex-col bg-transparent p-5" : "bg-white p-8 mb-8 rounded-[10px] shadow-[0_4px_12px_rgba(0,0,0,0.08)]"}>
       
-      <div className="bg-[#eef3f8] p-6 rounded-lg border border-gray-200 mb-6 flex flex-col lg:flex-row gap-4 items-start lg:items-end">
+      {/* TÍTULO E DESCRIÇÃO DINÂMICOS */}
+      <h2 className={`font-bold mt-0 mb-2 ${isToolMode ? 'text-white text-xl uppercase tracking-wider' : 'text-[#1c2a39] text-[28px]'}`}>
+        Motor de Alinhamento Múltiplo (MSA)
+      </h2>
+      <p className={`mb-6 ${isToolMode ? 'text-gray-400 text-xs' : 'text-gray-700'}`}>
+        Explora o nosso catálogo e alinha várias espécies em simultâneo contra o proteoma de referência.
+      </p>
+      
+      {/* PAINEL DE CONTROLOS (Adapta a cor de fundo!) */}
+      <div className={`p-6 rounded-lg border mb-6 flex flex-col lg:flex-row gap-4 items-start lg:items-end shrink-0 ${isToolMode ? 'bg-[#1c2a39] border-gray-700/50' : 'bg-[#eef3f8] border-gray-200'}`}>
+        
         {/* INPUT GENE */}
         <div className="flex-1 w-full relative z-50" ref={dropdownRef}>
-          <label className="block font-semibold text-[#1c2a39] mb-2">Gene</label>
+          <label className={`block font-semibold mb-2 ${isToolMode ? 'text-gray-300 text-[11px] uppercase tracking-wider' : 'text-[#1c2a39]'}`}>Gene</label>
           <input 
             type="text" 
             value={searchTerm}
             onChange={(e) => { setSearchTerm(e.target.value); setShowSuggestions(true); }}
             onFocus={() => setShowSuggestions(true)}
-            className="w-full border border-gray-300 rounded-md p-3 focus:outline-none focus:ring-2 focus:ring-[#2c5364] uppercase"
+            className={`w-full border rounded-md p-3 focus:outline-none focus:ring-2 uppercase font-semibold ${isToolMode ? 'bg-[#15202b] border-gray-600 text-white focus:ring-[#4fc3f7]' : 'bg-white border-gray-300 focus:ring-[#2c5364]'}`}
           />
           {showSuggestions && (
-            <ul className="absolute z-50 w-full bg-white border border-gray-300 mt-1 rounded-md shadow-lg max-h-60 overflow-y-auto">
+            <ul className={`absolute z-50 w-full border mt-1 rounded-md shadow-lg max-h-60 overflow-y-auto ${isToolMode ? 'bg-[#1c2a39] border-gray-600 text-white' : 'bg-white border-gray-300'}`}>
               {filteredGenes.map((gene) => (
-                <li key={gene} onClick={() => { setSearchTerm(gene); setShowSuggestions(false); }} className="p-3 hover:bg-[#eef3f8] cursor-pointer font-medium border-b border-gray-100">
+                <li key={gene} onClick={() => { setSearchTerm(gene); setShowSuggestions(false); }} className={`p-3 cursor-pointer font-medium border-b ${isToolMode ? 'hover:bg-[#15202b] border-gray-700' : 'hover:bg-[#eef3f8] border-gray-100'}`}>
                   🧬 {gene}
                 </li>
               ))}
@@ -679,8 +690,8 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
 
         {/* SELECT REFERÊNCIA */}
         <div className="flex-1 w-full">
-          <label className="block font-semibold text-[#1c2a39] mb-2">Referência</label>
-          <select value={refSpecies} onChange={(e) => setRefSpecies(e.target.value)} className="w-full bg-white border border-gray-300 p-3 rounded-md focus:outline-none focus:ring-2 focus:ring-[#2c5364]">
+          <label className={`block font-semibold mb-2 ${isToolMode ? 'text-gray-300 text-[11px] uppercase tracking-wider' : 'text-[#1c2a39]'}`}>Referência</label>
+          <select value={refSpecies} onChange={(e) => setRefSpecies(e.target.value)} className={`w-full border p-3 rounded-md focus:outline-none focus:ring-2 font-semibold ${isToolMode ? 'bg-[#15202b] border-gray-600 text-white focus:ring-[#4fc3f7]' : 'bg-white border-gray-300 focus:ring-[#2c5364]'}`}>
             {SPECIES_DATABASE.map(species => (
               <option key={`ref-${species.id}`} value={species.id}>{species.name}</option>
             ))}
@@ -689,28 +700,28 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
         
         {/* DROPDOWN ESPÉCIES */}
         <div className="flex-1 w-full relative z-40" ref={multiSelectRef}>
-          <label className="block font-semibold text-[#1c2a39] mb-2">Animais a Comparar</label>
+          <label className={`block font-semibold mb-2 ${isToolMode ? 'text-gray-300 text-[11px] uppercase tracking-wider' : 'text-[#1c2a39]'}`}>Animais a Comparar</label>
           <div 
             onClick={() => setShowMultiSelect(!showMultiSelect)} 
-            className="w-full bg-white border border-gray-300 p-3 rounded-md cursor-pointer flex justify-between items-center hover:border-[#2c5364]"
+            className={`w-full border p-3 rounded-md cursor-pointer flex justify-between items-center transition-colors ${isToolMode ? 'bg-[#15202b] border-gray-600 hover:border-[#4fc3f7]' : 'bg-white border-gray-300 hover:border-[#2c5364]'}`}
           >
-            <span className="text-gray-700 font-medium">
+            <span className={isToolMode ? 'text-white text-sm font-semibold' : 'text-gray-700 font-medium'}>
               {compSpeciesList.length === 0 ? 'Selecionar espécies...' : `${compSpeciesList.length} Espécies Ativas`}
             </span>
-            <span className="text-xs">▼</span>
+            <span className={`text-xs ${isToolMode ? 'text-gray-400' : ''}`}>▼</span>
           </div>
 
           {showMultiSelect && (
-            <div className="absolute z-20 w-full bg-white border border-gray-300 mt-1 rounded-md shadow-xl max-h-60 overflow-y-auto p-2 flex flex-col gap-1">
+            <div className={`absolute z-20 w-full border mt-1 rounded-md shadow-xl max-h-60 overflow-y-auto p-2 flex flex-col gap-1 ${isToolMode ? 'bg-[#1c2a39] border-gray-600 text-white' : 'bg-white border-gray-300'}`}>
               {SPECIES_DATABASE.filter(s => s.id !== refSpecies).map(species => (
-                <label key={`ms-${species.id}`} className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded cursor-pointer border border-transparent hover:border-gray-200">
+                <label key={`ms-${species.id}`} className={`flex items-center gap-3 p-2 rounded cursor-pointer border border-transparent transition-colors ${isToolMode ? 'hover:bg-[#15202b] hover:border-gray-600' : 'hover:bg-gray-50 hover:border-gray-200'}`}>
                   <input 
                     type="checkbox" 
                     checked={compSpeciesList.includes(species.id)}
                     onChange={() => toggleSpecies(species.id)}
-                    className="w-4 h-4 text-[#2c5364] rounded focus:ring-[#2c5364] cursor-pointer"
+                    className={`w-4 h-4 rounded cursor-pointer ${isToolMode ? 'text-[#4fc3f7] focus:ring-[#4fc3f7]' : 'text-[#2c5364] focus:ring-[#2c5364]'}`}
                   />
-                  <span className="text-sm font-medium text-gray-700">{species.name}</span>
+                  <span className={`text-sm font-medium ${isToolMode ? 'text-gray-200' : 'text-gray-700'}`}>{species.name}</span>
                 </label>
               ))}
             </div>
@@ -718,7 +729,7 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
         </div>
         
         <div className="w-full lg:w-auto flex flex-wrap gap-2 items-end">
-          <button onClick={handleSmartSearch} disabled={isSearching} className="w-full lg:w-auto bg-[#2c5364] text-white px-6 py-2.5 rounded-md hover:bg-[#1c2a39] transition-colors font-medium disabled:opacity-50 h-full">
+          <button onClick={handleSmartSearch} disabled={isSearching} className={`w-full lg:w-auto text-white px-6 py-2.5 rounded-md transition-colors font-medium disabled:opacity-50 h-full border ${isToolMode ? 'bg-blue-600 hover:bg-blue-500 border-blue-500 shadow-sm' : 'bg-[#2c5364] hover:bg-[#1c2a39] border-transparent'}`}>
             {isSearching ? 'A extrair...' : 'Alinhar Tudo'}
           </button>
           
