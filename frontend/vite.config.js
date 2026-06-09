@@ -8,3 +8,5 @@ export default defineConfig({
     tailwindcss(),
   ],
 })
+
+// Forçar deploy limpo na Vercel
