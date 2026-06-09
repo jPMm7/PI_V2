@@ -33,6 +33,51 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
   
   const [showSuggestions, setShowSuggestions] = useState(false);
   const dropdownRef = useRef(null);
+
+  const [liveSuggestions, setLiveSuggestions] = useState([]);
+  const [isSearchingGene, setIsSearchingGene] = useState(false);
+
+  // ---> NOVO: MOTOR QUE FALA COM A UNIPROT EM TEMPO REAL <---
+  useEffect(() => {
+    const term = searchTerm.trim().toUpperCase();
+    
+    // Se tiver menos de 2 letras, não gasta recursos a pesquisar
+    if (term.length < 2) {
+      setLiveSuggestions([]);
+      setIsSearchingGene(false);
+      return;
+    }
+
+    // Debounce: Espera 400ms depois do utilizador parar de escrever antes de disparar
+    const delayDebounceFn = setTimeout(async () => {
+      setIsSearchingGene(true);
+      try {
+        // Consulta à base de dados mundial da UniProt apenas para Humanos (organism_id:9606)
+        const res = await fetch(`https://rest.uniprot.org/uniprotkb/search?query=(gene:${term}*)+AND+(organism_id:9606)&size=6&fields=gene_names&format=json`);
+        if (res.ok) {
+          const data = await res.json();
+          const foundGenes = [];
+          
+          if (data.results) {
+            data.results.forEach(item => {
+              if (item.genes && item.genes[0] && item.genes[0].geneName) {
+                const gName = item.genes[0].geneName.value.toUpperCase();
+                // Evita genes duplicados na lista
+                if (!foundGenes.includes(gName)) foundGenes.push(gName);
+              }
+            });
+          }
+          setLiveSuggestions(foundGenes);
+        }
+      } catch (error) {
+        console.error("Falha no autocomplete:", error);
+      } finally {
+        setIsSearchingGene(false);
+      }
+    }, 400); // 400ms de atraso intencional
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchTerm]);
   
   const [refSpecies, setRefSpecies] = useState('homo_sapiens');
   const [compSpeciesList, setCompSpeciesList] = useState(['felis_catus', 'pan_troglodytes']);
@@ -414,11 +459,17 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
   };
 
   const handleSmartSearch = async () => {
-    if (!GENE_DATABASE.includes(searchTerm.toUpperCase())) {
-      setErrorMsg("Seleciona um gene válido."); return;
+    
+    // ---> A MAGIA: Removemos a limitação do GENE_DATABASE! <---
+    // Agora só verificamos se o utilizador não deixou o campo em branco.
+    if (!searchTerm || searchTerm.trim() === '') {
+      setErrorMsg("Por favor, escreve o nome de um gene válido."); 
+      return;
     }
+    
     if (compSpeciesList.length === 0) {
-      setErrorMsg("Seleciona pelo menos uma espécie para comparar."); return;
+      setErrorMsg("Seleciona pelo menos uma espécie para comparar."); 
+      return;
     }
     
     setIsSearching(true);
@@ -436,7 +487,7 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
         ...compSpeciesList.map(species => fetchEnsemblData(species, targetGene))
       ]);
 
-      if (refData.error) throw new Error(`Referência Falhou: ${refData.error}`);
+      if (refData.error) throw new Error(`Referência Falhou: O gene '${targetGene}' não foi encontrado.`);
 
       setRefDataState(refData);
       setCompDataListState(compDataArray);
@@ -667,21 +718,57 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
         
         {/* INPUT GENE */}
         <div className="flex-1 w-full relative z-50" ref={dropdownRef}>
-          <label className={`block font-semibold mb-2 ${isToolMode ? 'text-gray-300 text-[11px] uppercase tracking-wider' : 'text-[#1c2a39]'}`}>Gene</label>
+          <label className={`block font-semibold mb-1 ${isToolMode ? 'text-gray-400 text-[10px] uppercase' : 'text-[#1c2a39] mb-2'}`}>Gene</label>
           <input 
             type="text" 
             value={searchTerm}
             onChange={(e) => { setSearchTerm(e.target.value); setShowSuggestions(true); }}
             onFocus={() => setShowSuggestions(true)}
-            className={`w-full border rounded-md p-3 focus:outline-none focus:ring-2 uppercase font-semibold ${isToolMode ? 'bg-[#15202b] border-gray-600 text-white focus:ring-[#4fc3f7]' : 'bg-white border-gray-300 focus:ring-[#2c5364]'}`}
+            placeholder="Ex: TP53, SHH..."
+            className={`w-full border rounded-md p-2 focus:outline-none focus:ring-2 uppercase font-semibold transition-colors ${isToolMode ? 'bg-[#15202b] border-gray-600 text-white focus:ring-[#4fc3f7]' : 'bg-white border-gray-300 focus:ring-[#2c5364]'}`}
           />
+          
           {showSuggestions && (
-            <ul className={`absolute z-50 w-full border mt-1 rounded-md shadow-lg max-h-60 overflow-y-auto ${isToolMode ? 'bg-[#1c2a39] border-gray-600 text-white' : 'bg-white border-gray-300'}`}>
-              {filteredGenes.map((gene) => (
-                <li key={gene} onClick={() => { setSearchTerm(gene); setShowSuggestions(false); }} className={`p-3 cursor-pointer font-medium border-b ${isToolMode ? 'hover:bg-[#15202b] border-gray-700' : 'hover:bg-[#eef3f8] border-gray-100'}`}>
-                  🧬 {gene}
+            <ul className={`absolute z-50 w-full border mt-1 rounded-md shadow-xl max-h-60 overflow-y-auto flex flex-col ${isToolMode ? 'bg-[#1c2a39] border-gray-600 text-white' : 'bg-white border-gray-200'}`}>
+              
+              {searchTerm.trim().length < 2 ? (
+                // ESTADO 1: INICIAL (Menos de 2 letras mostra os Populares)
+                <>
+                  <li className="p-2 text-[10px] uppercase tracking-wider font-bold text-gray-500 bg-gray-800/20 shadow-sm z-10 sticky top-0">Populares</li>
+                  {GENE_DATABASE.slice(0, 5).map((gene) => (
+                    <li key={`pop-${gene}`} onClick={() => { setSearchTerm(gene); setShowSuggestions(false); }} className={`p-3 cursor-pointer font-medium border-b transition-colors flex items-center gap-2 ${isToolMode ? 'hover:bg-[#15202b] border-gray-700' : 'hover:bg-[#eef3f8] border-gray-100'}`}>
+                      🧬 {gene}
+                    </li>
+                  ))}
+                </>
+              ) : isSearchingGene ? (
+                // ESTADO 2: LOADING (A falar com a API da UniProt)
+                <li className="p-5 text-center text-sm font-medium text-blue-400 flex items-center justify-center gap-3">
+                  <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                  A procurar na UniProt...
                 </li>
-              ))}
+              ) : liveSuggestions.length > 0 ? (
+                // ESTADO 3: RESULTADOS LIVE DA NUVEM
+                <>
+                  <li className="p-2 text-[10px] uppercase tracking-wider font-bold text-[#4fc3f7] bg-[#4fc3f7]/10 flex justify-between shadow-sm z-10 sticky top-0">
+                    <span>UniProt Database</span>
+                    <span className="text-[9px] flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span> Live</span>
+                  </li>
+                  {liveSuggestions.map((gene) => (
+                    <li key={`live-${gene}`} onClick={() => { setSearchTerm(gene); setShowSuggestions(false); }} className={`p-3 cursor-pointer font-medium border-b transition-colors flex items-center gap-2 ${isToolMode ? 'hover:bg-[#15202b] border-gray-700' : 'hover:bg-[#eef3f8] border-gray-100'}`}>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-400"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+                      {gene}
+                    </li>
+                  ))}
+                </>
+              ) : (
+                // ESTADO 4: NENHUM RESULTADO
+                <li className="p-5 text-center text-sm text-gray-400 flex flex-col items-center gap-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-50"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                  Nenhum gene comum encontrado.
+                  <span className="text-[10px] text-gray-500 mt-1">Podes forçar a pesquisa clicando em "Alinhar".</span>
+                </li>
+              )}
             </ul>
           )}
         </div>
