@@ -654,18 +654,16 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
 
   return ( 
     <>
-    <section id="tool" className={isToolMode ? "flex flex-col bg-transparent p-5" : "bg-white p-8 mb-8 rounded-[10px] shadow-[0_4px_12px_rgba(0,0,0,0.08)]"}>
+    {/* 1. Removemos o mb-8 para mb-0 se for modo tool, e diminuímos o padding */}
+    <section id="tool" className={isToolMode ? "flex flex-col bg-transparent p-2" : "bg-white p-8 mb-8 rounded-[10px] shadow-[0_4px_12px_rgba(0,0,0,0.08)]"}>
       
-      {/* TÍTULO E DESCRIÇÃO DINÂMICOS */}
-      <h2 className={`font-bold mt-0 mb-2 ${isToolMode ? 'text-white text-xl uppercase tracking-wider' : 'text-[#1c2a39] text-[28px]'}`}>
-        Motor de Alinhamento Múltiplo (MSA)
+      {/* 2. Título muito mais compacto */}
+      <h2 className={`font-bold mt-0 ${isToolMode ? 'text-white text-lg uppercase tracking-wider mb-2' : 'text-[#1c2a39] text-[28px] mb-2'}`}>
+        MSA Motor
       </h2>
-      <p className={`mb-6 ${isToolMode ? 'text-gray-400 text-xs' : 'text-gray-700'}`}>
-        Explora o nosso catálogo e alinha várias espécies em simultâneo contra o proteoma de referência.
-      </p>
       
-      {/* PAINEL DE CONTROLOS (Adapta a cor de fundo!) */}
-      <div className={`p-6 rounded-lg border mb-6 flex flex-col lg:flex-row gap-4 items-start lg:items-end shrink-0 ${isToolMode ? 'bg-[#1c2a39] border-gray-700/50' : 'bg-[#eef3f8] border-gray-200'}`}>
+      {/* 3. Painel de Controlos muito mais "tight" */}
+      <div className={`rounded-lg border mb-3 flex flex-col lg:flex-row gap-3 items-start lg:items-end shrink-0 ${isToolMode ? 'bg-[#1c2a39] border-gray-700/50 p-3' : 'bg-[#eef3f8] border-gray-200 p-6 mb-6'}`}>
         
         {/* INPUT GENE */}
         <div className="flex-1 w-full relative z-50" ref={dropdownRef}>
@@ -700,10 +698,10 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
         
         {/* DROPDOWN ESPÉCIES */}
         <div className="flex-1 w-full relative z-40" ref={multiSelectRef}>
-          <label className={`block font-semibold mb-2 ${isToolMode ? 'text-gray-300 text-[11px] uppercase tracking-wider' : 'text-[#1c2a39]'}`}>Animais a Comparar</label>
+          <label className={`block font-semibold mb-1 ${isToolMode ? 'text-gray-400 text-[10px] uppercase' : 'text-[#1c2a39] mb-2'}`}>Animais</label>
           <div 
             onClick={() => setShowMultiSelect(!showMultiSelect)} 
-            className={`w-full border p-3 rounded-md cursor-pointer flex justify-between items-center transition-colors ${isToolMode ? 'bg-[#15202b] border-gray-600 hover:border-[#4fc3f7]' : 'bg-white border-gray-300 hover:border-[#2c5364]'}`}
+            className={`w-full border p-2 rounded-md cursor-pointer flex justify-between items-center ${isToolMode ? 'bg-[#15202b] border-gray-600' : 'bg-white border-gray-300'}`}
           >
             <span className={isToolMode ? 'text-white text-sm font-semibold' : 'text-gray-700 font-medium'}>
               {compSpeciesList.length === 0 ? 'Selecionar espécies...' : `${compSpeciesList.length} Espécies Ativas`}
@@ -762,7 +760,7 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
 
       
       {showResults && refDataState && (
-        <div ref={resultsRef} className="mt-8 animate-fade-in scroll-mt-24">
+        <div ref={resultsRef} className="mt-0 animate-fade-in scroll-mt-24">
           
           <div className="bg-[#1c2a39] text-gray-300 p-5 rounded-b-lg font-mono text-sm overflow-x-auto mb-6">
             

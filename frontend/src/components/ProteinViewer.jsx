@@ -644,20 +644,35 @@ export default function ProteinViewer({
               Centrar Tudo
             </button>
 
-            {/* BOTÕES TOGGLE */}
+            {/* BOTÕES TOGGLE COM ÍCONES SLEEK (SVGs) */}
             <button 
               onClick={() => setSyncViews(!syncViews)}
               className={`px-3 py-1.5 rounded-md text-[11px] font-semibold transition-colors shadow-sm cursor-pointer border flex items-center gap-1.5 ${syncViews ? 'bg-[#2c5364] text-white border-[#4fc3f7]/50 shadow-[0_0_8px_rgba(79,195,247,0.2)]' : 'bg-[#15202b] hover:bg-[#2c5364] text-gray-400 hover:text-white border-gray-600 hover:border-[#3a6b82]/50'}`}
               title="Sincronizar rotação das duas janelas"
             >
-              {syncViews ? 'Sincronizado 🔒' : 'Sincronizar 🔓'}
+              {syncViews ? (
+                <>
+                  Sincronizado
+                  {/* Ícone de Cadeado Fechado */}
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                </>
+              ) : (
+                <>
+                  Sincronizar
+                  {/* Ícone de Cadeado Aberto */}
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 9.9-1"></path></svg>
+                </>
+              )}
             </button>
             
             <button 
               onClick={() => setIsSpinning(!isSpinning)}
-              className={`px-3 py-1.5 rounded-md text-[11px] font-semibold transition-colors shadow-sm cursor-pointer border ${isSpinning ? 'bg-[#2c5364] text-white border-[#4fc3f7]/50 shadow-[0_0_8px_rgba(79,195,247,0.2)]' : 'bg-[#15202b] hover:bg-[#2c5364] text-gray-400 hover:text-white border-gray-600 hover:border-[#3a6b82]/50'}`}
+              /* Adicionei 'flex items-center gap-1.5' aqui também para alinhar o ícone! */
+              className={`px-3 py-1.5 rounded-md text-[11px] font-semibold transition-colors shadow-sm cursor-pointer border flex items-center gap-1.5 ${isSpinning ? 'bg-[#2c5364] text-white border-[#4fc3f7]/50 shadow-[0_0_8px_rgba(79,195,247,0.2)]' : 'bg-[#15202b] hover:bg-[#2c5364] text-gray-400 hover:text-white border-gray-600 hover:border-[#3a6b82]/50'}`}
             >
-              Rotação 360º
+              Rotação 360º 
+              {/* Ícone de Refresh/Rodar */}
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
             </button>
             
           </div>
@@ -710,7 +725,7 @@ export default function ProteinViewer({
       >
         
         {/* REFERÊNCIA HUMANA (3D MODEL 1) */}
-        <div className={`flex flex-col gap-2 ${isToolMode ? 'flex-1 min-h-0' : ''}`}>
+        <div className={` flex flex-col ${isToolMode ? 'gap-0 flex-1 min-h-0' : 'gap-2'}`}>
           <div className="bg-[#1c2a39] text-white px-3 py-2 rounded-t-lg font-bold flex justify-between items-center border-b-4 border-blue-500 shrink-0">
             <span className="text-xs tracking-wide">{refSpecies ? refSpecies.replace(/_/g, ' ').toUpperCase() : 'REFERÊNCIA'}</span>
             <span className="text-[9px] bg-gray-800 px-2 py-1 rounded text-blue-300 ml-auto border border-blue-900/50">{labelLeft || 'A PROCESSAR'}</span>
@@ -733,7 +748,7 @@ export default function ProteinViewer({
         </div>
 
         {/* ECRÃ DINÂMICO MULTI-ESPÉCIE (3D MODEL 2) */}
-        <div className={`flex flex-col gap-2 ${isToolMode ? 'flex-1 min-h-0' : ''}`}>
+        <div className={ `flex flex-col ${isToolMode ? 'gap-0 flex-1 min-h-0' : 'gap-2'}`}>
           <div className="bg-[#1c2a39] text-white px-3 py-[5px] rounded-t-lg font-bold flex flex-wrap gap-2 justify-between items-center border-b-4 border-green-500 shrink-0">
             <select 
               value={activeCompSpecies} 
