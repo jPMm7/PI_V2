@@ -17,7 +17,7 @@ export default function Team() {
             className="bg-[#eef3f8] p-6 rounded-lg text-center hover:bg-[#e2eaf4] transition-colors border border-gray-200"
           >
             <h3 className="text-[#1c2a39] text-xl font-semibold m-0 flex justify-center items-center gap-3">
-              <span className="text-3xl text-gray-400">👤</span>
+              <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-[#4fc3f7]"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
               {member.name}
             </h3>
           </div>
