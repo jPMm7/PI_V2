@@ -813,9 +813,14 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
     <section id="tool" className={isToolMode ? "flex flex-col bg-transparent p-2" : "bg-white p-8 mb-8 rounded-[10px] shadow-[0_4px_12px_rgba(0,0,0,0.08)]"}>
       
       {/* 2. Título muito mais compacto */}
-      <h2 className={`font-bold mt-0 ${isToolMode ? 'text-white text-lg uppercase tracking-wider mb-2' : 'text-[#1c2a39] text-[28px] mb-2'}`}>
-        Alinhamento de Sequências
-      </h2>
+      <div className="mb-4">
+        <h2 className={`text-xl font-black uppercase tracking-tight m-0 flex items-center gap-2 ${isToolMode ? 'text-white' : 'text-[#1c2a39]'}`}>
+          Alinhamento de Sequências
+        </h2>
+        <p className="text-gray-500 text-[11px] mt-1 m-0 font-semibold uppercase tracking-wider">
+          Deteção e comparação inter-espécies
+        </p>
+      </div>
       
       {/* 3. Painel de Controlos muito mais "tight" */}
       <div className={`rounded-lg border mb-3 flex flex-col lg:flex-row gap-3 items-start lg:items-end shrink-0 ${isToolMode ? 'bg-[#1c2a39] border-gray-700/50 p-3' : 'bg-[#eef3f8] border-gray-200 p-6 mb-6'}`}>
