@@ -615,10 +615,10 @@ export default function ProteinViewer({
       <div className="mb-4 flex items-center justify-between shrink-0">
         <div>
           <h2 className={`text-xl font-black uppercase tracking-tight m-0 flex items-center gap-2 ${isToolMode ? 'text-white' : 'text-[#1c2a39]'}`}>
-            Análise Estrutural
+            Modelo 3D
           </h2>
           <p className="text-gray-500 text-[11px] mt-1 m-0 font-semibold uppercase tracking-wider">
-            Impacto espacial das variações peptídicas
+            Ver mutações na estrutura da proteína
           </p>
         </div>
       </div>

@@ -814,7 +814,7 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
       
       {/* 2. Título muito mais compacto */}
       <h2 className={`font-bold mt-0 ${isToolMode ? 'text-white text-lg uppercase tracking-wider mb-2' : 'text-[#1c2a39] text-[28px] mb-2'}`}>
-        MSA Motor
+        Alinhamento de Sequências
       </h2>
       
       {/* 3. Painel de Controlos muito mais "tight" */}
