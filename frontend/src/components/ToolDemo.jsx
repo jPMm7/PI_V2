@@ -191,6 +191,7 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
     const { data, error } = await supabase
       .from('saved_workspaces')
       .select('*')
+      .eq('user_id', user.id)
       .order('created_at', { ascending: false }); 
       
     if (!error && data) setSavedWorkspacesList(data);
