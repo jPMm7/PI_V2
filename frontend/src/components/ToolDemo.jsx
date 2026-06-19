@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext'; 
 import { supabase } from '../config/supabaseClient';
 
@@ -128,6 +129,34 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
   const fileInputRef = useRef(null);
 
   const resultsRef = useRef(null); // Vai servir de âncora para o scroll automático
+  
+  const addTrackRef = useRef(null);
+  const [addTrackDropdownPos, setAddTrackDropdownPos] = useState({ top: 0, left: 0, width: 0 });
+
+  useEffect(() => {
+    if (isAddingTrack && addTrackRef.current) {
+      const updatePosition = () => {
+        if (addTrackRef.current) {
+          const rect = addTrackRef.current.getBoundingClientRect();
+          setAddTrackDropdownPos({
+            top: rect.bottom + window.scrollY,
+            left: rect.left + window.scrollX,
+            width: rect.width
+          });
+        }
+      };
+      
+      updatePosition();
+      
+      window.addEventListener('scroll', updatePosition, true);
+      window.addEventListener('resize', updatePosition);
+      
+      return () => {
+        window.removeEventListener('scroll', updatePosition, true);
+        window.removeEventListener('resize', updatePosition);
+      };
+    }
+  }, [isAddingTrack]);
 
   // NOVO: Autenticação e Estados de Gravação
   const { user } = useAuth();
@@ -1218,7 +1247,7 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
                         
                         {isAddingTrack ? (
                           
-                          <div className="flex flex-col gap-2 relative w-full">
+                          <div className="flex flex-col gap-2 relative w-full" ref={addTrackRef}>
                             <div className="flex items-center gap-2">
                               <input 
                                 autoFocus
@@ -1234,35 +1263,41 @@ export default function ToolDemo({ onAnalysisComplete, selectedGridIndex, onResi
                             </div>
 
                             {/* Dropdown flutuante de sugestões para Add Track */}
-                            <div className="absolute top-full left-0 mt-1 w-[260px] bg-[#1c2a39] border border-gray-600 rounded-md shadow-xl max-h-48 overflow-y-auto z-50 custom-scrollbar">
-                               {speciesSearchTerm.trim().length < 2 ? (
-                                  <>
-                                    <div className="text-[10px] text-gray-400 font-bold uppercase p-2 border-b border-gray-700 bg-[#15202b] sticky top-0">Populares</div>
-                                    {SPECIES_DATABASE.filter(s => s.id !== refSpecies && !compSpeciesList.includes(s.id)).map(s => (
-                                      <div key={`add-${s.id}`} onClick={() => { handleAddTrack(s.id); setSpeciesSearchTerm(''); }} className="p-2 cursor-pointer text-xs text-white hover:bg-[#2c5364] border-b border-gray-700/50">
-                                        {s.name}
-                                      </div>
-                                    ))}
-                                  </>
-                               ) : (
-                                  <>
-                                    <div className="text-[10px] text-[#4fc3f7] font-bold uppercase p-2 border-b border-gray-700 bg-[#15202b] sticky top-0 flex justify-between">
-                                      <span>Ensembl Live</span>
-                                      <span className="animate-pulse">🟢</span>
-                                    </div>
-                                    {filteredLiveSpecies.map(s => {
-                                      const isAdded = s.name === refSpecies || compSpeciesList.includes(s.name);
-                                      return (
-                                        <div key={`add-live-${s.name}`} onClick={() => { if(!isAdded) { handleAddTrack(s.name); setSpeciesSearchTerm(''); } }} className={`p-2 text-xs border-b border-gray-700/50 flex justify-between items-center ${isAdded ? 'opacity-50 cursor-not-allowed text-gray-500' : 'cursor-pointer text-white hover:bg-[#2c5364]'}`}>
-                                          <span className="truncate pr-2" title={s.display_name}>{s.display_name} <span className="opacity-50 text-[10px]">({s.name})</span></span>
-                                          {isAdded && <span className="text-[9px] bg-gray-700 px-1 rounded shrink-0">✔</span>}
+                            {createPortal(
+                              <div 
+                                className="absolute bg-[#1c2a39] border border-gray-600 rounded-md shadow-xl max-h-48 overflow-y-auto z-[9999] custom-scrollbar"
+                                style={{ top: addTrackDropdownPos.top + 4, left: addTrackDropdownPos.left, width: Math.max(260, addTrackDropdownPos.width) }}
+                              >
+                                {speciesSearchTerm.trim().length < 2 ? (
+                                    <>
+                                      <div className="text-[10px] text-gray-400 font-bold uppercase p-2 border-b border-gray-700 bg-[#15202b] sticky top-0">Populares</div>
+                                      {SPECIES_DATABASE.filter(s => s.id !== refSpecies && !compSpeciesList.includes(s.id)).map(s => (
+                                        <div key={`add-${s.id}`} onClick={() => { handleAddTrack(s.id); setSpeciesSearchTerm(''); }} className="p-2 cursor-pointer text-xs text-white hover:bg-[#2c5364] border-b border-gray-700/50">
+                                          {s.name}
                                         </div>
-                                      );
-                                    })}
-                                    {filteredLiveSpecies.length === 0 && <div className="p-3 text-xs text-gray-500 text-center italic">Sem resultados.</div>}
-                                  </>
-                               )}
-                            </div>
+                                      ))}
+                                    </>
+                                ) : (
+                                    <>
+                                      <div className="text-[10px] text-[#4fc3f7] font-bold uppercase p-2 border-b border-gray-700 bg-[#15202b] sticky top-0 flex justify-between">
+                                        <span>Ensembl Live</span>
+                                        <span className="animate-pulse">🟢</span>
+                                      </div>
+                                      {filteredLiveSpecies.map(s => {
+                                        const isAdded = s.name === refSpecies || compSpeciesList.includes(s.name);
+                                        return (
+                                          <div key={`add-live-${s.name}`} onClick={() => { if(!isAdded) { handleAddTrack(s.name); setSpeciesSearchTerm(''); } }} className={`p-2 text-xs border-b border-gray-700/50 flex justify-between items-center ${isAdded ? 'opacity-50 cursor-not-allowed text-gray-500' : 'cursor-pointer text-white hover:bg-[#2c5364]'}`}>
+                                            <span className="truncate pr-2" title={s.display_name}>{s.display_name} <span className="opacity-50 text-[10px]">({s.name})</span></span>
+                                            {isAdded && <span className="text-[9px] bg-gray-700 px-1 rounded shrink-0">✔</span>}
+                                          </div>
+                                        );
+                                      })}
+                                      {filteredLiveSpecies.length === 0 && <div className="p-3 text-xs text-gray-500 text-center italic">Sem resultados.</div>}
+                                    </>
+                                )}
+                              </div>,
+                              document.body
+                            )}
                           </div>
 
                         ) : (
