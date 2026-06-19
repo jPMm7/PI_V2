@@ -33,6 +33,7 @@ export default function ProteinViewer({
   const [isSpinning, setIsSpinning] = useState(false);
 
   const [syncViews, setSyncViews] = useState(false);
+  const [showDistances, setShowDistances] = useState(true);
   const syncIntervalRef = useRef(null);
 
   const isZoomingRef = useRef(false); // Sinal para pausar a sincronização durante as viagens
@@ -168,7 +169,7 @@ export default function ProteinViewer({
       instRight.current?.removeAllShapes();
       
       // Mesmo sem foco, os tubos amarelos mantêm-se visíveis!
-      if (instRight.current && compensatoryPairs.length > 0) {
+      if (showDistances && instRight.current && compensatoryPairs.length > 0) {
         compensatoryPairs.forEach(pair => {
           // A mesma matemática da tabela: <= 4.5 é Forte, > 4.5 é Moderada
           const isForte = parseFloat(pair.dist) <= 4.5;
@@ -226,7 +227,7 @@ export default function ProteinViewer({
       instRight.current.removeAllShapes();
 
       // Redesenha os tubos amarelos antes de focar na mutação
-      if (instRight.current && compensatoryPairs.length > 0) {
+      if (showDistances && instRight.current && compensatoryPairs.length > 0) {
         compensatoryPairs.forEach(pair => {
           // A mesma matemática da tabela: <= 4.5 é Forte, > 4.5 é Moderada
           const isForte = parseFloat(pair.dist) <= 4.5;
@@ -273,7 +274,7 @@ export default function ProteinViewer({
       zoomTimeoutRef.current = setTimeout(() => { isZoomingRef.current = false; }, 1200);
     }
     
-  }, [selectedGridIndex, activeCompSpecies, refSequence, compSequences, loadingLeft, loadingRight, refSpecies, compensatoryPairs]);
+  }, [selectedGridIndex, activeCompSpecies, refSequence, compSequences, loadingLeft, loadingRight, refSpecies, compensatoryPairs, showDistances]);
 
   // 1. INICIALIZAÇÃO DO MOTOR WEBGL (Este bloco tinha desaparecido!)
   useEffect(() => {
@@ -684,6 +685,19 @@ export default function ProteinViewer({
               Rotação 360º 
               {/* Ícone de Refresh/Rodar */}
               <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+            </button>
+            
+            <button 
+              onClick={() => setShowDistances(!showDistances)}
+              className={`px-3 py-1.5 rounded-md text-[11px] font-semibold transition-colors shadow-sm cursor-pointer border flex items-center gap-1.5 ${showDistances ? 'bg-[#2c5364] text-white border-[#4fc3f7]/50 shadow-[0_0_8px_rgba(79,195,247,0.2)]' : 'bg-[#15202b] hover:bg-[#2c5364] text-gray-400 hover:text-white border-gray-600 hover:border-[#3a6b82]/50'}`}
+              title="Mostrar/Ocultar distâncias compensatórias"
+            >
+              Distâncias
+              {showDistances ? (
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+              )}
             </button>
             
           </div>
