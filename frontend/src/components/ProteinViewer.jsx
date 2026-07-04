@@ -25,6 +25,7 @@ export default function ProteinViewer({
 
   const [loadingLeft, setLoadingLeft] = useState(false);
   const [loadingRight, setLoadingRight] = useState(false);
+  const [webglError, setWebglError] = useState(null);
   const [labelLeft, setLabelLeft] = useState('');
   const [labelRight, setLabelRight] = useState('');
 
@@ -278,16 +279,28 @@ export default function ProteinViewer({
 
   // 1. INICIALIZAÇÃO DO MOTOR WEBGL (Este bloco tinha desaparecido!)
   useEffect(() => {
-    if (!window.$3Dmol) return;
-    if (viewerLeftRef.current && !instLeft.current) {
-      instLeft.current = window.$3Dmol.createViewer(viewerLeftRef.current, { backgroundColor: '#1c2a39' });
+    if (!window.$3Dmol) {
+      setTimeout(() => setWebglError("A biblioteca 3Dmol não foi carregada."), 0);
+      return;
     }
-    if (viewerRightRef.current && !instRight.current) {
-      instRight.current = window.$3Dmol.createViewer(viewerRightRef.current, { backgroundColor: '#1c2a39' });
+    try {
+      if (viewerLeftRef.current && !instLeft.current) {
+        instLeft.current = window.$3Dmol.createViewer(viewerLeftRef.current, { backgroundColor: '#1c2a39' });
+      }
+      if (viewerRightRef.current && !instRight.current) {
+        instRight.current = window.$3Dmol.createViewer(viewerRightRef.current, { backgroundColor: '#1c2a39' });
+      }
+    } catch (err) {
+      console.error("Falha ao inicializar o WebGL:", err);
+      setTimeout(() => setWebglError(err.message || "Não foi possível inicializar o WebGL."), 0);
     }
     return () => {
-      if (instLeft.current) instLeft.current.removeAllModels();
-      if (instRight.current) instRight.current.removeAllModels();
+      if (instLeft.current) {
+        try { instLeft.current.removeAllModels(); } catch { /* ignore */ }
+      }
+      if (instRight.current) {
+        try { instRight.current.removeAllModels(); } catch { /* ignore */ }
+      }
     };
   }, []);
 
@@ -623,8 +636,53 @@ export default function ProteinViewer({
         </div>
       </div>
 
-      {/* PAINEL DE CONTROLO / DISPLAY OPTIONS */}
-      <div className="bg-[#1c2a39] p-4 rounded-xl shadow-md mb-4 border border-gray-700 shrink-0">
+      {webglError ? (
+        <div className="flex-1 flex flex-col items-center justify-center p-8 bg-[#1c2a39] rounded-xl border border-yellow-600/30 text-center my-4">
+          <div className="bg-yellow-500/10 p-4 rounded-full mb-4">
+            <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-yellow-500 animate-pulse">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+          </div>
+          <h3 className="text-white text-lg font-bold mb-2">Aceleração de Hardware / WebGL Necessária</h3>
+          <p className="text-gray-300 text-sm max-w-md mb-4">
+            O visualizador 3D necessita de suporte WebGL para renderizar as estruturas moleculares. O seu navegador ou dispositivo atual não disponibilizou um contexto WebGL válido.
+          </p>
+          <div className="bg-[#15202b] p-4 rounded-lg text-left max-w-md border border-gray-700 text-xs text-gray-400 space-y-2 mx-auto">
+            <p className="font-semibold text-white">Como resolver isto:</p>
+            <ol className="list-decimal pl-4 space-y-1">
+              <li>Certifique-se de que a <strong>aceleração por hardware</strong> está ativada nas configurações do seu navegador.</li>
+              <li>Verifique se tem demasiadas abas com visualizadores 3D abertas e feche-as para libertar contextos WebGL.</li>
+              <li>Atualize as drivers da sua placa gráfica ou tente utilizar outro navegador (Chrome, Firefox ou Edge).</li>
+            </ol>
+          </div>
+          <button 
+            onClick={() => {
+              setWebglError(null);
+              try {
+                if (viewerLeftRef.current && !instLeft.current) {
+                  instLeft.current = window.$3Dmol.createViewer(viewerLeftRef.current, { backgroundColor: '#1c2a39' });
+                }
+                if (viewerRightRef.current && !instRight.current) {
+                  instRight.current = window.$3Dmol.createViewer(viewerRightRef.current, { backgroundColor: '#1c2a39' });
+                }
+                if (gene && refSpecies) loadStructure(gene, refSpecies, instLeft.current, setLabelLeft, setLoadingLeft, true);
+                if (gene && activeCompSpecies) loadStructure(gene, activeCompSpecies, instRight.current, setLabelRight, setLoadingRight, false);
+              } catch (e) {
+                console.error("Falha ao tentar reinicializar:", e);
+                setWebglError(e.message || "Falha na inicialização do WebGL.");
+              }
+            }}
+            className="mt-6 bg-[#2c5364] hover:bg-[#3a6b82] text-white px-4 py-2 rounded-md text-xs font-semibold transition-all cursor-pointer border border-[#3a6b82]/50 hover:scale-[1.02] shadow-md"
+          >
+            Tentar Novamente
+          </button>
+        </div>
+      ) : (
+        <>
+          {/* PAINEL DE CONTROLO / DISPLAY OPTIONS */}
+          <div className="bg-[#1c2a39] p-4 rounded-xl shadow-md mb-4 border border-gray-700 shrink-0">
         {/* Retirámos o justify-between e deixámos o flexbox fluido */}
         <div className="flex flex-wrap items-center gap-4">
           
@@ -812,6 +870,8 @@ export default function ProteinViewer({
         </div>
 
       </div>
+        </>
+      )}
     </section>
   );
 }
